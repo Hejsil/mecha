@@ -410,6 +410,16 @@ pub fn toInt(comptime Int: type, comptime base: u8) fn ([]const u8) ?Int {
     }.func;
 }
 
+/// Constructs a convert function for `convert` that takes a
+/// string and parses it to a float of type `Float`.
+pub fn toFloat(comptime Float: type) fn ([]const u8) ?Float {
+    return struct {
+        fn func(str: []const u8) ?Float {
+            return fmt.parseFloat(Float, str) catch return null;
+        }
+    }.func;
+}
+
 /// A convert function for `convert` that takes a string and
 /// returns the first character, but only if `string.len == 1`.
 pub fn toChar(str: []const u8) ?u8 {
@@ -442,15 +452,20 @@ test "convert" {
     testParser(123, "a", parser1("123a"));
     testParser(null, "", parser1("12"));
 
-    const parser2 = comptime convert(u8, toChar, asStr(string("a")));
-    testParser('a', "", parser2("a"));
-    testParser('a', "a", parser2("aa"));
-    testParser(null, "", parser2("b"));
+    const parser2 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
+    testParser(1.23, "", parser2("1.23"));
+    testParser(1.23, "a", parser2("1.23a"));
+    testParser(null, "", parser2("1.2"));
 
-    const parser3 = comptime convert(bool, toBool, any);
-    testParser(true, "", parser3("true"));
-    testParser(false, "", parser3("false"));
+    const parser3 = comptime convert(u8, toChar, asStr(string("a")));
+    testParser('a', "", parser3("a"));
+    testParser('a', "a", parser3("aa"));
     testParser(null, "", parser3("b"));
+
+    const parser4 = comptime convert(bool, toBool, any);
+    testParser(true, "", parser4("true"));
+    testParser(false, "", parser4("false"));
+    testParser(null, "", parser4("b"));
 }
 
 /// Construct a parser that succeeds if it parser an integer of
@@ -485,6 +500,48 @@ test "int" {
     testParser(0xff, "", parser2("ff"));
     testParser(0xff, "", parser2("FF"));
     testParser(null, "", parser2("100"));
+}
+
+/// Construct a parser that succeeds if it parser a float.
+/// The result of this parser will be the string containing
+/// the match.
+pub fn floatToken() Parser([]const u8) {
+    return comptime asStr(combine(.{
+        opt(oneOf(.{ char('+'), char('-') })),
+        combine(.{
+            many(digit(10)),
+            opt(char('.')),
+            opt(many(digit(10))),
+            combine(.{ opt(oneOf(.{ char('e'), char('E') })),
+                opt(oneOf(.{ char('+'), char('-') })),
+                opt(many(digit(10)))
+            }),
+        }),
+    }));
+}
+
+/// Same as `floatToken` but also converts the parsed string
+/// to a float.
+pub fn float(comptime Float: type) Parser(Float) {
+    return comptime convert(Float, toFloat(Float), floatToken());
+}
+
+test "float" {
+    const parser1 = float(f32);
+    testParser(0.0, "", parser1("0"));
+    testParser(0.0, "", parser1("0.0"));
+    testParser(0.0, "", parser1("-0"));
+    testParser(0.0, "", parser1("+0"));
+    testParser(1.23, "", parser1("1.23"));
+    testParser(1.23e10, "", parser1("1.23e10"));
+    testParser(1.23e10, "", parser1("1.23E10"));
+    testParser(1.23e10, "", parser1("1.23e+10"));
+    testParser(1.23e10, "", parser1("1.23E+10"));
+    testParser(1.23e-10, "", parser1("1.23e-10"));
+    testParser(1.23e-10, "", parser1("1.23E-10"));
+    testParser(-1.23e-10, "", parser1("-1.23e-10"));
+    testParser(-1.23e-10, "", parser1("-1.23E-10"));
+    testParser(1.0, "a", parser1("1a"));
 }
 
 fn testParser(expected_value: var, rest: []const u8, m_res: var) void {

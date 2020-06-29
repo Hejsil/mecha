@@ -452,20 +452,21 @@ test "convert" {
     testParser(123, "a", parser1("123a"));
     testParser(null, "", parser1("12"));
 
-    const parser2 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
-    testParser(1.23, "", parser2("1.23"));
-    testParser(1.23, "a", parser2("1.23a"));
-    testParser(null, "", parser2("1.2"));
+    const parser2 = comptime convert(u8, toChar, asStr(string("a")));
+    testParser('a', "", parser2("a"));
+    testParser('a', "a", parser2("aa"));
+    testParser(null, "", parser2("b"));
 
-    const parser3 = comptime convert(u8, toChar, asStr(string("a")));
-    testParser('a', "", parser3("a"));
-    testParser('a', "a", parser3("aa"));
+    const parser3 = comptime convert(bool, toBool, any);
+    testParser(true, "", parser3("true"));
+    testParser(false, "", parser3("false"));
     testParser(null, "", parser3("b"));
 
-    const parser4 = comptime convert(bool, toBool, any);
-    testParser(true, "", parser4("true"));
-    testParser(false, "", parser4("false"));
-    testParser(null, "", parser4("b"));
+    const parser4 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
+    testParser(1.23, "", parser4("1.23"));
+    testParser(1.23, "a", parser4("1.23a"));
+    testParser(null, "", parser4("1.2"));
+
 }
 
 /// Construct a parser that succeeds if it parser an integer of

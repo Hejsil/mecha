@@ -502,48 +502,6 @@ test "int" {
     testParser(null, "", parser2("100"));
 }
 
-/// Construct a parser that succeeds if it parser a float.
-/// The result of this parser will be the string containing
-/// the match.
-pub fn floatToken() Parser([]const u8) {
-    return comptime asStr(combine(.{
-        opt(oneOf(.{ char('+'), char('-') })),
-        combine(.{
-            many(digit(10)),
-            opt(char('.')),
-            opt(many(digit(10))),
-            combine(.{ opt(oneOf(.{ char('e'), char('E') })),
-                opt(oneOf(.{ char('+'), char('-') })),
-                opt(many(digit(10)))
-            }),
-        }),
-    }));
-}
-
-/// Same as `floatToken` but also converts the parsed string
-/// to a float.
-pub fn float(comptime Float: type) Parser(Float) {
-    return comptime convert(Float, toFloat(Float), floatToken());
-}
-
-test "float" {
-    const parser1 = float(f32);
-    testParser(0.0, "", parser1("0"));
-    testParser(0.0, "", parser1("0.0"));
-    testParser(0.0, "", parser1("-0"));
-    testParser(0.0, "", parser1("+0"));
-    testParser(1.23, "", parser1("1.23"));
-    testParser(1.23e10, "", parser1("1.23e10"));
-    testParser(1.23e10, "", parser1("1.23E10"));
-    testParser(1.23e10, "", parser1("1.23e+10"));
-    testParser(1.23e10, "", parser1("1.23E+10"));
-    testParser(1.23e-10, "", parser1("1.23e-10"));
-    testParser(1.23e-10, "", parser1("1.23E-10"));
-    testParser(-1.23e-10, "", parser1("-1.23e-10"));
-    testParser(-1.23e-10, "", parser1("-1.23E-10"));
-    testParser(1.0, "a", parser1("1a"));
-}
-
 fn testParser(expected_value: var, rest: []const u8, m_res: var) void {
     switch (@typeInfo(@TypeOf(expected_value))) {
         .Null => testing.expect(m_res == null),

@@ -410,6 +410,16 @@ pub fn toInt(comptime Int: type, comptime base: u8) fn ([]const u8) ?Int {
     }.func;
 }
 
+/// Constructs a convert function for `convert` that takes a
+/// string and parses it to a float of type `Float`.
+pub fn toFloat(comptime Float: type) fn ([]const u8) ?Float {
+    return struct {
+        fn func(str: []const u8) ?Float {
+            return fmt.parseFloat(Float, str) catch return null;
+        }
+    }.func;
+}
+
 /// A convert function for `convert` that takes a string and
 /// returns the first character, but only if `string.len == 1`.
 pub fn toChar(str: []const u8) ?u8 {
@@ -451,6 +461,12 @@ test "convert" {
     testParser(true, "", parser3("true"));
     testParser(false, "", parser3("false"));
     testParser(null, "", parser3("b"));
+
+    const parser4 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
+    testParser(1.23, "", parser4("1.23"));
+    testParser(1.23, "a", parser4("1.23a"));
+    testParser(null, "", parser4("1.2"));
+
 }
 
 /// Construct a parser that succeeds if it parser an integer of

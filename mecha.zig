@@ -114,7 +114,6 @@ test "range" {
     testParser(null, "\xc0", range(0x100, 0x100)("\xc0"));
 }
 
-
 /// A parser that succeeds if the string starts with an alphabetic
 /// character. The parsers result will be the character parsed.
 pub const alpha = oneOf(.{ range('a', 'z'), range('A', 'Z') });

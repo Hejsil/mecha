@@ -71,17 +71,30 @@ test "char" {
 }
 
 /// Constructs a parser that only succeeds if the string starts with
-/// a character that is in between `start` and `end` inclusively.
-/// The parsers result will be the character parsed.
-pub fn range(comptime start: u8, comptime end: u8) Parser(u8) {
+/// a codepoint that is in between `start` and `end` inclusively.
+/// The parsers result will be the codepoint parsed.
+pub fn range(comptime start: u21, comptime end: u21) Parser(u21) {
     return struct {
-        const Res = Result(u8);
+        const Res = Result(u21);
         fn func(str: []const u8) ?Res {
             if (str.len == 0)
                 return null;
-            switch (str[0]) {
-                start...end => return Res.init(str[0], str[1..]),
-                else => return null,
+
+            if (end <= math.maxInt(u7)) {
+                switch (str[0]) {
+                    start...end => return Res.init(str[0], str[1..]),
+                    else => return null,
+                }
+            } else {
+                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+                if (cp_len > str.len)
+                    return null;
+
+                const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
+                switch (cp) {
+                    start...end => return Res.init(cp, str[cp_len..]),
+                    else => return null,
+                }
             }
         }
     }.func;
@@ -96,44 +109,11 @@ test "range" {
     testParser('z', "a", range('a', 'z')("za"));
     testParser(null, "", range('a', 'z')("1"));
     testParser(null, "", range('a', 'z')(""));
+    testParser(0x100, "ā", range(0x100, 0x100)("Āā"));
+    testParser(null, "aa", range(0x100, 0x100)("aa"));
+    testParser(null, "\xc0", range(0x100, 0x100)("\xc0"));
 }
 
-/// Constructs a parser that only succeeds if the string starts with
-/// a codepoint that is in between `start` and `end` inclusively.
-/// The parsers result will be the codepoint parsed.
-pub fn urange(comptime start: u21, comptime end: u21) Parser(u21) {
-    return struct {
-        const Res = Result(u21);
-        fn func(str: []const u8) ?Res {
-            if (str.len == 0)
-                return null;
-
-            const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
-            if (cp_len > str.len)
-                return null;
-
-            const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
-            switch (cp) {
-                start...end => return Res.init(cp, str[cp_len..]),
-                else => return null,
-            }
-        }
-    }.func;
-}
-
-test "urange" {
-    testParser('a', "", urange('a', 'z')("a"));
-    testParser('c', "", urange('a', 'z')("c"));
-    testParser('z', "", urange('a', 'z')("z"));
-    testParser('a', "a", urange('a', 'z')("aa"));
-    testParser('c', "a", urange('a', 'z')("ca"));
-    testParser('z', "a", urange('a', 'z')("za"));
-    testParser(null, "", urange('a', 'z')("1"));
-    testParser(null, "", urange('a', 'z')(""));
-    testParser(0x100, "ā", urange(0x100, 0x100)("Āā"));
-    testParser(null, "aa", urange(0x100, 0x100)("aa"));
-    testParser(null, "\xc0", urange(0x100, 0x100)("\xc0"));
-}
 
 /// A parser that succeeds if the string starts with an alphabetic
 /// character. The parsers result will be the character parsed.
@@ -155,7 +135,7 @@ test "alpha" {
 /// Construct a parser that succeeds if the string starts with a
 /// character that is a digit in `base`. The parsers result will be
 /// the character parsed.
-pub fn digit(comptime base: u8) Parser(u8) {
+pub fn digit(comptime base: u8) Parser(u21) {
     debug.assert(base != 0);
     if (base <= 10)
         return range('0', '0' + (base - 1));
@@ -289,9 +269,9 @@ pub fn opt(comptime parser: var) Parser(?ParserResult(@TypeOf(parser))) {
 
 test "opt" {
     const parser1 = comptime opt(range('a', 'z'));
-    testParser(@as(?u8, 'a'), "", parser1("a"));
-    testParser(@as(?u8, 'a'), "a", parser1("aa"));
-    testParser(@as(?u8, null), "1", parser1("1"));
+    testParser(@as(?u21, 'a'), "", parser1("a"));
+    testParser(@as(?u21, 'a'), "a", parser1("aa"));
+    testParser(@as(?u21, null), "1", parser1("1"));
 }
 
 fn ParsersTypes(comptime parsers: var) []const type {
@@ -359,7 +339,7 @@ test "combine" {
     const parser2 = comptime combine(.{ opt(range('a', 'b')), char('d') });
     testParser('a', "", parser2("ad"));
     testParser('a', "a", parser2("ada"));
-    testParser(@as(?u8, null), "a", parser2("da"));
+    testParser(@as(?u21, null), "a", parser2("da"));
     testParser(null, "", parser2("qa"));
 }
 

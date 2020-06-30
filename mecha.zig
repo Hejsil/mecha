@@ -5,6 +5,7 @@ const debug = std.debug;
 const fmt = std.fmt;
 const math = std.math;
 const mem = std.mem;
+const unicode = std.unicode;
 const testing = std.testing;
 
 pub const Tuple = tuple.Tuple;
@@ -95,6 +96,48 @@ test "range" {
     testParser('z', "a", range('a', 'z')("za"));
     testParser(null, "", range('a', 'z')("1"));
     testParser(null, "", range('a', 'z')(""));
+}
+
+/// Constructs a parser that only succeeds if the string starts with
+/// a codepoint that is in between `start` and `end` inclusively.
+/// The parsers result will be the codepoint parsed.
+pub fn urange(comptime start: u21, comptime end: u21) Parser(u21) {
+    return struct {
+        const Res = Result(u21);
+        fn func(str: []const u8) ?Res {
+            if (str.len == 0)
+                return null;
+            if (unicode.utf8ByteSequenceLength(str[0])) |cp_len| {
+                if (cp_len > str.len) {
+                    return null;
+                }
+                if (unicode.utf8Decode(str[0..cp_len])) |cp| {
+                    switch (cp) {
+                        start...end => return Res.init(cp, str[cp_len..]),
+                        else => return null,
+                    }
+                } else |err| {
+                    return null;
+                }
+            } else |err| {
+                return null;
+            }
+        }
+    }.func;
+}
+
+test "urange" {
+    testParser('a', "", urange('a', 'z')("a"));
+    testParser('c', "", urange('a', 'z')("c"));
+    testParser('z', "", urange('a', 'z')("z"));
+    testParser('a', "a", urange('a', 'z')("aa"));
+    testParser('c', "a", urange('a', 'z')("ca"));
+    testParser('z', "a", urange('a', 'z')("za"));
+    testParser(null, "", urange('a', 'z')("1"));
+    testParser(null, "", urange('a', 'z')(""));
+    testParser(0x100, "ā", urange(0x100, 0x100)("Āā"));
+    testParser(null, "aa", urange(0x100, 0x100)("aa"));
+    testParser(null, "\xc0", urange(0x100, 0x100)("\xc0"));
 }
 
 /// A parser that succeeds if the string starts with an alphabetic

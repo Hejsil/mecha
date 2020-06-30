@@ -107,20 +107,15 @@ pub fn urange(comptime start: u21, comptime end: u21) Parser(u21) {
         fn func(str: []const u8) ?Res {
             if (str.len == 0)
                 return null;
-            if (unicode.utf8ByteSequenceLength(str[0])) |cp_len| {
-                if (cp_len > str.len) {
-                    return null;
-                }
-                if (unicode.utf8Decode(str[0..cp_len])) |cp| {
-                    switch (cp) {
-                        start...end => return Res.init(cp, str[cp_len..]),
-                        else => return null,
-                    }
-                } else |err| {
-                    return null;
-                }
-            } else |err| {
+
+            const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+            if (cp_len > str.len)
                 return null;
+
+            const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
+            switch (cp) {
+                start...end => return Res.init(cp, str[cp_len..]),
+                else => return null,
             }
         }
     }.func;

@@ -60,28 +60,11 @@ test "any" {
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
 pub fn char(comptime c: u21) Parser(void) {
-    return struct {
-        const Res = Result(void);
-        fn func(str: []const u8) ?Res {
-            if (str.len == 0)
-                return null;
-
-            if (c <= math.maxInt(u7)) {
-                if (str[0] == c) {
-                    return Res.init({}, str[1..]);
-                } else return null;
-            } else {
-                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
-                if (cp_len > str.len)
-                    return null;
-
-                const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
-                if (cp == c) {
-                    return Res.init({}, str[cp_len..]);
-                } else return null;
-            }
-        }
-    }.func;
+    comptime {
+        var array: [4]u8 = undefined;
+        const len = unicode.utf8Encode(c, array[0..]) catch unreachable;
+        return string(array[0..len]);
+    }
 }
 
 test "char" {

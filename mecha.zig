@@ -59,8 +59,29 @@ test "any" {
 }
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
-pub fn char(comptime c: u8) Parser(void) {
-    return string(&[_]u8{c});
+pub fn char(comptime c: u21) Parser(void) {
+    return struct {
+        const Res = Result(void);
+        fn func(str: []const u8) ?Res {
+            if (str.len == 0)
+                return null;
+
+            if (c <= math.maxInt(u7)) {
+                if (str[0] == c) {
+                    return Res.init({}, str[1..]);
+                } else return null;
+            } else {
+                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+                if (cp_len > str.len)
+                    return null;
+
+                const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
+                if (cp == c) {
+                    return Res.init({}, str[cp_len..]);
+                } else return null;
+            }
+        }
+    }.func;
 }
 
 test "char" {
@@ -68,6 +89,9 @@ test "char" {
     testParser({}, "a", char('a')("aa"));
     testParser(null, "", char('a')("ba"));
     testParser(null, "", char('a')(""));
+    testParser({}, "ā", char(0x100)("Āā"));
+    testParser(null, "", char(0x100)(""));
+    testParser(null, "\xc0", char(0x100)("\xc0"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with
@@ -250,6 +274,9 @@ test "many" {
     testParser("abab", "", parser2("abab"));
     testParser("abab", "a", parser2("ababa"));
     testParser("abab", "ab", parser2("ababab"));
+
+    const parser3 = comptime many(char(0x100));
+    testParser("ĀĀĀ", "āāā", parser3("ĀĀĀāāā"));
 }
 
 /// Construct a parser that will call `parser` on the string

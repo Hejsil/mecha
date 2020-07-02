@@ -59,8 +59,12 @@ test "any" {
 }
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
-pub fn char(comptime c: u8) Parser(void) {
-    return string(&[_]u8{c});
+pub fn char(comptime c: u21) Parser(void) {
+    comptime {
+        var array: [4]u8 = undefined;
+        const len = unicode.utf8Encode(c, array[0..]) catch unreachable;
+        return string(array[0..len]);
+    }
 }
 
 test "char" {
@@ -68,6 +72,9 @@ test "char" {
     testParser({}, "a", char('a')("aa"));
     testParser(null, "", char('a')("ba"));
     testParser(null, "", char('a')(""));
+    testParser({}, "ā", char(0x100)("Āā"));
+    testParser(null, "", char(0x100)(""));
+    testParser(null, "\xc0", char(0x100)("\xc0"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with
@@ -250,6 +257,9 @@ test "many" {
     testParser("abab", "", parser2("abab"));
     testParser("abab", "a", parser2("ababa"));
     testParser("abab", "ab", parser2("ababab"));
+
+    const parser3 = comptime many(char(0x100));
+    testParser("ĀĀĀ", "āāā", parser3("ĀĀĀāāā"));
 }
 
 /// Construct a parser that will call `parser` on the string

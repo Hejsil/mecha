@@ -211,7 +211,7 @@ test "string" {
 pub fn manyRange(
     comptime n: usize,
     comptime m: usize,
-    comptime parser: var,
+    comptime parser: anytype,
 ) Parser([]const u8) {
     return struct {
         const Res = Result([]const u8);
@@ -235,7 +235,7 @@ pub fn manyRange(
 
 /// Construct a parser that repeatedly uses `parser` until it fails.
 /// The parsers result will be a string containing everything parsed.
-pub fn many(comptime parser: var) Parser([]const u8) {
+pub fn many(comptime parser: anytype) Parser([]const u8) {
     return manyRange(0, math.maxInt(usize), parser);
 }
 
@@ -265,7 +265,7 @@ test "many" {
 /// Construct a parser that will call `parser` on the string
 /// but never fails to parser. The parsers result will be the
 /// result of `parser` on success and `null` on failure.
-pub fn opt(comptime parser: var) Parser(?ParserResult(@TypeOf(parser))) {
+pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     return struct {
         const Res = Result(?ParserResult(@TypeOf(parser)));
         fn func(str: []const u8) ?Res {
@@ -283,7 +283,7 @@ test "opt" {
     testParser(@as(?u21, null), "1", parser1("1"));
 }
 
-fn ParsersTypes(comptime parsers: var) []const type {
+fn ParsersTypes(comptime parsers: anytype) []const type {
     var types: []const type = &[_]type{};
     inline for (parsers) |parser| {
         const T = ParserResult(@TypeOf(parser));
@@ -293,7 +293,7 @@ fn ParsersTypes(comptime parsers: var) []const type {
     return types;
 }
 
-fn Combine(comptime parsers: var) type {
+fn Combine(comptime parsers: anytype) type {
     const types = ParsersTypes(parsers);
     if (types.len == 0)
         return void;
@@ -309,7 +309,7 @@ fn Combine(comptime parsers: var) type {
 /// all parser not of type `Parser(void)`. If only one parser
 /// is not of type `Parser(void)` then this parsers result is
 /// returned instead of a tuple.
-pub fn combine(comptime parsers: var) Parser(Combine(parsers)) {
+pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
     return struct {
         const types = ParsersTypes(parsers);
         const Res = Result(Combine(parsers));
@@ -357,7 +357,7 @@ test "combine" {
 /// parsers will be called in order all with `str` as input.
 /// The parser will return with the result of the first parser
 /// that succeeded. The parsers result will be `Result(T)`
-pub fn oneOf(comptime parsers: var) Parser(ParserResult(@TypeOf(parsers[0]))) {
+pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))) {
     return struct {
         fn func(str: []const u8) ?Result(ParserResult(@TypeOf(parsers[0]))) {
             inline for (parsers) |p| {
@@ -385,7 +385,7 @@ test "oneOf" {
 /// Takes any parser (preferable not of type `Parser([]const u8)`)
 /// and converts it to a parser where the result is a string that
 /// contains all characters parsed by `parser`.
-pub fn asStr(comptime parser: var) Parser([]const u8) {
+pub fn asStr(comptime parser: anytype) Parser([]const u8) {
     return struct {
         const Res = Result([]const u8);
         fn func(str: []const u8) ?Res {
@@ -414,8 +414,8 @@ test "asStr" {
 /// fail if `conv` fails.
 pub fn convert(
     comptime T: type,
-    comptime conv: var,
-    comptime parser: var,
+    comptime conv: anytype,
+    comptime parser: anytype,
 ) Parser(T) {
     return struct {
         const Res = Result(T);
@@ -529,7 +529,7 @@ test "int" {
     testParser(null, "", parser2("100"));
 }
 
-fn testParser(expected_value: var, rest: []const u8, m_res: var) void {
+fn testParser(expected_value: anytype, rest: []const u8, m_res: anytype) void {
     switch (@typeInfo(@TypeOf(expected_value))) {
         .Null => testing.expect(m_res == null),
         else => {

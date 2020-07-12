@@ -15,7 +15,7 @@ pub fn Tuple(comptime types: []const type) type {
 
         pub fn init(comptime Self: type) type {
             return struct {
-                fn func(t: var) Self {
+                fn func(t: anytype) Self {
                     comptime debug.assert(t.len == types.len);
 
                     var res: Self = undefined;
@@ -29,7 +29,7 @@ pub fn Tuple(comptime types: []const type) type {
             };
         }
 
-        pub fn at(t: var, comptime i: usize) At(@TypeOf(t), i) {
+        pub fn at(t: anytype, comptime i: usize) At(@TypeOf(t), i) {
             comptime debug.assert(i < t.len);
             if (t.len <= 2 and i == 0)
                 return &t.first;

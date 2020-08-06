@@ -1,5 +1,4 @@
 const std = @import("std");
-const tuple = @import("tuple.zig");
 
 const debug = std.debug;
 const fmt = std.fmt;
@@ -7,8 +6,6 @@ const math = std.math;
 const mem = std.mem;
 const unicode = std.unicode;
 const testing = std.testing;
-
-pub const Tuple = tuple.Tuple;
 
 /// The result of a successful parse
 pub fn Result(comptime T: type) type {
@@ -302,6 +299,39 @@ fn Combine(comptime parsers: var) type {
     return Tuple(types);
 }
 
+/// A hacky way to get a tuple type from an array of types
+fn Tuple(comptime types: []const type) type {
+    // We have to have runtime values in order for us to get a tuple
+    // that doesn't have comptime fields.
+    const G = struct {
+        var g0: types[0] = undefined;
+        var g1: types[1] = undefined;
+        var g2: types[2] = undefined;
+        var g3: types[3] = undefined;
+        var g4: types[4] = undefined;
+        var g5: types[5] = undefined;
+        var g6: types[6] = undefined;
+        var g7: types[7] = undefined;
+        var g8: types[8] = undefined;
+        var g9: types[9] = undefined;
+    };
+
+    return switch (types.len) {
+        0 => @TypeOf(.{}),
+        1 => @TypeOf(.{G.g0}),
+        2 => @TypeOf(.{ G.g0, G.g1 }),
+        3 => @TypeOf(.{ G.g0, G.g1, G.g2 }),
+        4 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3 }),
+        5 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4 }),
+        6 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5 }),
+        7 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6 }),
+        8 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6, G.g7 }),
+        9 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6, G.g7, G.g8 }),
+        10 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6, G.g7, G.g8, G.g9 }),
+        else => unreachable,
+    };
+}
+
 /// Takes a tuple of `Parser(any)` and constructs a parser that
 /// only succeeds if all parsers succeed to parse. The parsers
 /// will be called in order and parser `N` will use the `rest`
@@ -327,7 +357,7 @@ pub fn combine(comptime parsers: var) Parser(Combine(parsers)) {
                     if (types.len == 1) {
                         res.value = r.value;
                     } else {
-                        res.value.at(j).* = r.value;
+                        res.value[j] = r.value;
                         j += 1;
                     }
                 }
@@ -340,10 +370,10 @@ pub fn combine(comptime parsers: var) Parser(Combine(parsers)) {
 test "combine" {
     const parser1 = comptime combine(.{ opt(range('a', 'b')), opt(range('d', 'e')) });
     const Res = ParserResult(@TypeOf(parser1));
-    testParser(Res.init(.{ 'a', 'd' }), "", parser1("ad"));
-    testParser(Res.init(.{ 'a', null }), "a", parser1("aa"));
-    testParser(Res.init(.{ null, 'd' }), "a", parser1("da"));
-    testParser(Res.init(.{ null, null }), "qa", parser1("qa"));
+    testParser(Res{ .@"0" = 'a', .@"1" = 'd' }, "", parser1("ad"));
+    testParser(Res{ .@"0" = 'a', .@"1" = null }, "a", parser1("aa"));
+    testParser(Res{ .@"0" = null, .@"1" = 'd' }, "a", parser1("da"));
+    testParser(Res{ .@"0" = null, .@"1" = null }, "qa", parser1("qa"));
 
     const parser2 = comptime combine(.{ opt(range('a', 'b')), char('d') });
     testParser('a', "", parser2("ad"));

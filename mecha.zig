@@ -296,11 +296,11 @@ fn Combine(comptime parsers: var) type {
         return void;
     if (types.len == 1)
         return types[0];
-    return Tuple(types);
+    return Tuple(types.len, types[0..types.len].*);
 }
 
 /// A hacky way to get a tuple type from an array of types
-fn Tuple(comptime types: []const type) type {
+fn Tuple(comptime n: usize, comptime types: [n]type) type {
     // We have to have runtime values in order for us to get a tuple
     // that doesn't have comptime fields.
     const G = struct {

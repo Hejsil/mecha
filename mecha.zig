@@ -496,6 +496,12 @@ test "convert" {
     testParser(1.23, "", parser4("1.23"));
     testParser(1.23, "a", parser4("1.23a"));
     testParser(null, "", parser4("1.2"));
+
+    const E = packed enum(u8) { a, b, _ };
+    const parser5 = comptime convert(E, toEnum(E), any);
+    testParser(E.a, "", parser5("a"));
+    testParser(E.b, "", parser5("b"));
+    testParser(null, "2", parser5("2"));
 }
 
 /// Construct a parser that succeeds if it parser an integer of

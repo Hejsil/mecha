@@ -1,26 +1,21 @@
 name: CI
-on:
-  push:
-    branches: [master, actionsTest]
-  pull_request:
-    branches: [master, actionsTest]
+on: push
 jobs:
   test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{matrix.os}}
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: goto-bus-stop/setup-zig@v1.2.1
+      - uses: actions/checkout@v2.3.4
+        with:
+          submodules: recursive
+      - uses: goto-bus-stop/setup-zig@v1.2.5
         with:
           version: 0.7.0
       - run: zig test mecha.zig
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: goto-bus-stop/setup-zig@v1.2.1
+      - uses: actions/checkout@v2.3.4
+      - uses: goto-bus-stop/setup-zig@v1.2.5
         with:
           version: 0.7.0
       - run: zig fmt --check .

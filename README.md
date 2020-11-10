@@ -18,9 +18,9 @@ const Rgb = struct {
 
 fn toRgb(tuple: var) ?Rgb {
     return Rgb{
-        .r = tuple.at(0).*,
-        .g = tuple.at(1).*,
-        .b = tuple.at(2).*,
+        .r = tuple[0],
+        .g = tuple[1],
+        .b = tuple[2],
     };
 }
 

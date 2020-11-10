@@ -29,7 +29,7 @@ pub fn Parser(comptime T: type) type {
 /// The reverse of `Parser`. Give it a `Parser` type
 /// and this function will give you `T`.
 pub fn ParserResult(comptime P: type) type {
-    return P.ReturnType.Child.Value;
+    return @typeInfo(@typeInfo(P).Fn.return_type.?).Optional.child.Value;
 }
 
 /// A parser that only succeeds on the end of the string.
@@ -299,37 +299,10 @@ fn Combine(comptime parsers: anytype) type {
     return Tuple(types.len, types[0..types.len].*);
 }
 
-/// A hacky way to get a tuple type from an array of types
+/// HACK: Zig cannot cache functions that takes pointers (slices)
+///       so we have to passed the types as an array by value.
 fn Tuple(comptime n: usize, comptime types: [n]type) type {
-    // We have to have runtime values in order for us to get a tuple
-    // that doesn't have comptime fields.
-    const G = struct {
-        var g0: types[0] = undefined;
-        var g1: types[1] = undefined;
-        var g2: types[2] = undefined;
-        var g3: types[3] = undefined;
-        var g4: types[4] = undefined;
-        var g5: types[5] = undefined;
-        var g6: types[6] = undefined;
-        var g7: types[7] = undefined;
-        var g8: types[8] = undefined;
-        var g9: types[9] = undefined;
-    };
-
-    return switch (types.len) {
-        0 => @TypeOf(.{}),
-        1 => @TypeOf(.{G.g0}),
-        2 => @TypeOf(.{ G.g0, G.g1 }),
-        3 => @TypeOf(.{ G.g0, G.g1, G.g2 }),
-        4 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3 }),
-        5 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4 }),
-        6 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5 }),
-        7 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6 }),
-        8 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6, G.g7 }),
-        9 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6, G.g7, G.g8 }),
-        10 => @TypeOf(.{ G.g0, G.g1, G.g2, G.g3, G.g4, G.g5, G.g6, G.g7, G.g8, G.g9 }),
-        else => unreachable,
-    };
+    return std.meta.Tuple(&types);
 }
 
 /// Takes a tuple of `Parser(any)` and constructs a parser that

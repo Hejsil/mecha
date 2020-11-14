@@ -32,6 +32,23 @@ pub fn ParserResult(comptime P: type) type {
     return @typeInfo(@typeInfo(P).Fn.return_type.?).Optional.child.Value;
 }
 
+pub fn testParser(expected_value: anytype, rest: []const u8, m_res: anytype) void {
+    switch (@typeInfo(@TypeOf(expected_value))) {
+        .Null => testing.expect(m_res == null),
+        else => {
+            testing.expect(m_res != null);
+            testing.expectEqualSlices(u8, rest, m_res.?.rest);
+            const T = @TypeOf(m_res.?.value);
+            switch (T) {
+                []u8,
+                []const u8,
+                => testing.expectEqualSlices(u8, expected_value, m_res.?.value),
+                else => testing.expectEqual(@as(T, expected_value), m_res.?.value),
+            }
+        },
+    }
+}
+
 /// A parser that only succeeds on the end of the string.
 pub fn eos(str: []const u8) ?Result(void) {
     if (str.len != 0)
@@ -536,21 +553,4 @@ test "int" {
     testParser(0xff, "", parser2("ff"));
     testParser(0xff, "", parser2("FF"));
     testParser(null, "", parser2("100"));
-}
-
-fn testParser(expected_value: anytype, rest: []const u8, m_res: anytype) void {
-    switch (@typeInfo(@TypeOf(expected_value))) {
-        .Null => testing.expect(m_res == null),
-        else => {
-            testing.expect(m_res != null);
-            testing.expectEqualSlices(u8, rest, m_res.?.rest);
-            const T = @TypeOf(m_res.?.value);
-            switch (T) {
-                []u8,
-                []const u8,
-                => testing.expectEqualSlices(u8, expected_value, m_res.?.value),
-                else => testing.expectEqual(@as(T, expected_value), m_res.?.value),
-            }
-        },
-    }
 }

@@ -451,11 +451,15 @@ pub fn toFloat(comptime Float: type) fn ([]const u8) ?Float {
 }
 
 /// A convert function for `convert` that takes a string and
-/// returns the first character, but only if `string.len == 1`.
-pub fn toChar(str: []const u8) ?u8 {
-    if (str.len != 1)
-        return null;
-    return str[0];
+/// returns the first codepoint.
+pub fn toChar(str: []const u8) ?u21 {
+    if (str.len > 1) {
+        const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+        if (cp_len > str.len)
+            return null;
+        return unicode.utf8Decode(str[0..cp_len]) catch null;
+    }
+    return @as(u21, str[0]);
 }
 
 /// Constructs a convert function for `convert` that takes a
@@ -482,7 +486,7 @@ test "convert" {
     testParser(123, "a", parser1("123a"));
     testParser(null, "", parser1("12"));
 
-    const parser2 = comptime convert(u8, toChar, asStr(string("a")));
+    const parser2 = comptime convert(u21, toChar, asStr(string("a")));
     testParser('a', "", parser2("a"));
     testParser('a', "a", parser2("aa"));
     testParser(null, "", parser2("b"));
@@ -502,6 +506,9 @@ test "convert" {
     testParser(E.a, "", parser5("a"));
     testParser(E.b, "", parser5("b"));
     testParser(null, "2", parser5("2"));
+
+    const parser6 = comptime convert(u21, toChar, asStr(string("Āā")));
+    testParser(0x100, "", parser6("Āā"));
 }
 
 /// Construct a parser that succeeds if it parser an integer of

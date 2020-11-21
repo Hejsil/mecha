@@ -511,6 +511,19 @@ test "convert" {
     testParser(0x100, "", parser6("Āā"));
 }
 
+pub fn discard(comptime parser: anytype) Parser(void) {
+    return convert(void, struct {
+        fn d(_: anytype) ?void {}
+    }.d, parser);
+}
+
+test "discard" {
+    const parser = comptime discard(many(char(' ')));
+    testParser({}, "abc", parser(" abc"));
+    testParser({}, "abc", parser("  abc"));
+    testParser({}, "abc", parser("   abc"));
+}
+
 /// Construct a parser that succeeds if it parser an integer of
 /// `base`. The result of this parser will be the string containing
 /// the match.
@@ -550,12 +563,12 @@ fn testParser(expected_value: anytype, rest: []const u8, m_res: anytype) void {
         .Null => testing.expect(m_res == null),
         else => {
             testing.expect(m_res != null);
-            testing.expectEqualSlices(u8, rest, m_res.?.rest);
+            testing.expectEqualStrings(rest, m_res.?.rest);
             const T = @TypeOf(m_res.?.value);
             switch (T) {
                 []u8,
                 []const u8,
-                => testing.expectEqualSlices(u8, expected_value, m_res.?.value),
+                => testing.expectEqualStrings(expected_value, m_res.?.value),
                 else => testing.expectEqual(@as(T, expected_value), m_res.?.value),
             }
         },

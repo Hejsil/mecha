@@ -511,6 +511,8 @@ test "convert" {
     testParser(0x100, "", parser6("Āā"));
 }
 
+/// Constructs a parser that discards the result returned from the parser
+/// it warps.
 pub fn discard(comptime parser: anytype) Parser(void) {
     return convert(void, struct {
         fn d(_: anytype) ?void {}

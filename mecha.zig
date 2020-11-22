@@ -201,6 +201,29 @@ test "string" {
     testParser(null, "", string("aa")(""));
 }
 
+/// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
+/// The parsers result will be an array of the results from the repeated parser.
+pub fn manyN(
+    comptime n: usize,
+    comptime parser: anytype,
+) Parser([n]ParserResult(@TypeOf(parser))) {
+    return struct {
+        const Array = [n]ParserResult(@TypeOf(parser));
+        const Res = Result(Array);
+        fn func(str: []const u8) ?Res {
+            var rem = str;
+            var res: Array = undefined;
+            for (res) |*value| {
+                const r = parser(rem) orelse return null;
+                rem = r.rest;
+                value.* = r.value;
+            }
+
+            return Res.init(res, rem);
+        }
+    }.func;
+}
+
 /// Construct a parser that repeatedly uses `parser` until it fails
 /// or `m` iterations is reached. The parser constructed will only
 /// succeed if `parser` succeeded at least `n` times. The parsers
@@ -213,15 +236,11 @@ pub fn manyRange(
     return struct {
         const Res = Result([]const u8);
         fn func(str: []const u8) ?Res {
-            var rem = str;
-            comptime var i: usize = 0;
-            inline while (i < n) : (i += 1) {
-                const r = parser(rem) orelse return null;
-                rem = r.rest;
-            }
+            const first_n = manyN(n, parser)(str) orelse return null;
+            var rem = first_n.rest;
 
-            var i_2 = i;
-            while (i_2 < m) : (i_2 += 1) {
+            var i: usize = n;
+            while (i < m) : (i += 1) {
                 const r = parser(rem) orelse break;
                 rem = r.rest;
             }
@@ -257,6 +276,9 @@ test "many" {
 
     const parser3 = comptime many(char(0x100));
     testParser("ĀĀĀ", "āāā", parser3("ĀĀĀāāā"));
+
+    const parser4 = comptime manyN(3, range('a', 'b'));
+    testParser([_]u21{ 'a', 'b', 'a' }, "bab", parser4("ababab"));
 }
 
 /// Construct a parser that will call `parser` on the string

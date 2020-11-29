@@ -40,8 +40,8 @@ pub fn eos(str: []const u8) ?Result(void) {
 }
 
 test "eos" {
-    testParser({}, "", eos(""));
-    testParser(null, "", eos("a"));
+    expectResult(void, .{ .value = {}, .rest = "" }, eos(""));
+    expectResult(void, null, eos("a"));
 }
 
 /// A parser that always succeeds with the result being the
@@ -51,8 +51,8 @@ pub fn any(str: []const u8) ?Result([]const u8) {
 }
 
 test "any" {
-    testParser("", "", any(""));
-    testParser("a", "", any("a"));
+    expectResult([]const u8, .{ .value = "", .rest = "" }, any(""));
+    expectResult([]const u8, .{ .value = "a", .rest = "" }, any("a"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
@@ -65,13 +65,13 @@ pub fn char(comptime c: u21) Parser(void) {
 }
 
 test "char" {
-    testParser({}, "", char('a')("a"));
-    testParser({}, "a", char('a')("aa"));
-    testParser(null, "", char('a')("ba"));
-    testParser(null, "", char('a')(""));
-    testParser({}, "ā", char(0x100)("Āā"));
-    testParser(null, "", char(0x100)(""));
-    testParser(null, "\xc0", char(0x100)("\xc0"));
+    expectResult(void, .{ .value = {}, .rest = "" }, char('a')("a"));
+    expectResult(void, .{ .value = {}, .rest = "a" }, char('a')("aa"));
+    expectResult(void, null, char('a')("ba"));
+    expectResult(void, null, char('a')(""));
+    expectResult(void, .{ .value = {}, .rest = "ā" }, char(0x100)("Āā"));
+    expectResult(void, null, char(0x100)(""));
+    expectResult(void, null, char(0x100)("\xc0"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with
@@ -105,17 +105,17 @@ pub fn range(comptime start: u21, comptime end: u21) Parser(u21) {
 }
 
 test "range" {
-    testParser('a', "", range('a', 'z')("a"));
-    testParser('c', "", range('a', 'z')("c"));
-    testParser('z', "", range('a', 'z')("z"));
-    testParser('a', "a", range('a', 'z')("aa"));
-    testParser('c', "a", range('a', 'z')("ca"));
-    testParser('z', "a", range('a', 'z')("za"));
-    testParser(null, "", range('a', 'z')("1"));
-    testParser(null, "", range('a', 'z')(""));
-    testParser(0x100, "ā", range(0x100, 0x100)("Āā"));
-    testParser(null, "aa", range(0x100, 0x100)("aa"));
-    testParser(null, "\xc0", range(0x100, 0x100)("\xc0"));
+    expectResult(u21, .{ .value = 'a', .rest = "" }, range('a', 'z')("a"));
+    expectResult(u21, .{ .value = 'c', .rest = "" }, range('a', 'z')("c"));
+    expectResult(u21, .{ .value = 'z', .rest = "" }, range('a', 'z')("z"));
+    expectResult(u21, .{ .value = 'a', .rest = "a" }, range('a', 'z')("aa"));
+    expectResult(u21, .{ .value = 'c', .rest = "a" }, range('a', 'z')("ca"));
+    expectResult(u21, .{ .value = 'z', .rest = "a" }, range('a', 'z')("za"));
+    expectResult(u21, null, range('a', 'z')("1"));
+    expectResult(u21, null, range('a', 'z')(""));
+    expectResult(u21, .{ .value = 0x100, .rest = "ā" }, range(0x100, 0x100)("Āā"));
+    expectResult(u21, null, range(0x100, 0x100)("aa"));
+    expectResult(u21, null, range(0x100, 0x100)("\xc0"));
 }
 
 /// A parser that succeeds if the string starts with an alphabetic
@@ -129,8 +129,8 @@ test "alpha" {
         switch (c) {
             'a'...'z',
             'A'...'Z',
-            => testParser(c, "", alpha(&[_]u8{c})),
-            else => testParser(null, "", alpha(&[_]u8{c})),
+            => expectResult(u21, .{ .value = c, .rest = "" }, alpha(&[_]u8{c})),
+            else => expectResult(u21, null, alpha(&[_]u8{c})),
         }
     }
 }
@@ -155,8 +155,8 @@ test "alpha" {
     while (i <= 255) : (i += 1) {
         const c = @intCast(u8, i);
         switch (c) {
-            '0'...'1' => testParser(c, "", digit(2)(&[_]u8{c})),
-            else => testParser(null, "", digit(2)(&[_]u8{c})),
+            '0'...'1' => expectResult(u21, .{ .value = c, .rest = "" }, digit(2)(&[_]u8{c})),
+            else => expectResult(u21, null, digit(2)(&[_]u8{c})),
         }
     }
 
@@ -164,8 +164,8 @@ test "alpha" {
     while (i <= 255) : (i += 1) {
         const c = @intCast(u8, i);
         switch (c) {
-            '0'...'9' => testParser(c, "", digit(10)(&[_]u8{c})),
-            else => testParser(null, "", digit(10)(&[_]u8{c})),
+            '0'...'9' => expectResult(u21, .{ .value = c, .rest = "" }, digit(10)(&[_]u8{c})),
+            else => expectResult(u21, null, digit(10)(&[_]u8{c})),
         }
     }
     i = 0;
@@ -175,8 +175,8 @@ test "alpha" {
             '0'...'9',
             'a'...'f',
             'A'...'F',
-            => testParser(c, "", digit(16)(&[_]u8{c})),
-            else => testParser(null, "", digit(16)(&[_]u8{c})),
+            => expectResult(u21, .{ .value = c, .rest = "" }, digit(16)(&[_]u8{c})),
+            else => expectResult(u21, null, digit(16)(&[_]u8{c})),
         }
     }
 }
@@ -195,10 +195,10 @@ pub fn string(comptime str: []const u8) Parser(void) {
 }
 
 test "string" {
-    testParser({}, "", string("aa")("aa"));
-    testParser({}, "a", string("aa")("aaa"));
-    testParser(null, "", string("aa")("ba"));
-    testParser(null, "", string("aa")(""));
+    expectResult(void, .{ .value = {}, .rest = "" }, string("aa")("aa"));
+    expectResult(void, .{ .value = {}, .rest = "a" }, string("aa")("aaa"));
+    expectResult(void, null, string("aa")("ba"));
+    expectResult(void, null, string("aa")(""));
 }
 
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
@@ -257,28 +257,28 @@ pub fn many(comptime parser: anytype) Parser([]const u8) {
 
 test "many" {
     const parser1 = comptime many(string("ab"));
-    testParser("", "", parser1(""));
-    testParser("", "a", parser1("a"));
-    testParser("ab", "", parser1("ab"));
-    testParser("ab", "a", parser1("aba"));
-    testParser("abab", "", parser1("abab"));
-    testParser("abab", "a", parser1("ababa"));
-    testParser("ababab", "", parser1("ababab"));
+    expectResult([]const u8, .{ .value = "", .rest = "" }, parser1(""));
+    expectResult([]const u8, .{ .value = "", .rest = "a" }, parser1("a"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "" }, parser1("ab"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser1("aba"));
+    expectResult([]const u8, .{ .value = "abab", .rest = "" }, parser1("abab"));
+    expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser1("ababa"));
+    expectResult([]const u8, .{ .value = "ababab", .rest = "" }, parser1("ababab"));
 
     const parser2 = comptime manyRange(1, 2, string("ab"));
-    testParser(null, "", parser2(""));
-    testParser(null, "", parser2("a"));
-    testParser("ab", "", parser2("ab"));
-    testParser("ab", "a", parser2("aba"));
-    testParser("abab", "", parser2("abab"));
-    testParser("abab", "a", parser2("ababa"));
-    testParser("abab", "ab", parser2("ababab"));
+    expectResult([]const u8, null, parser2(""));
+    expectResult([]const u8, null, parser2("a"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "" }, parser2("ab"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser2("aba"));
+    expectResult([]const u8, .{ .value = "abab", .rest = "" }, parser2("abab"));
+    expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser2("ababa"));
+    expectResult([]const u8, .{ .value = "abab", .rest = "ab" }, parser2("ababab"));
 
     const parser3 = comptime many(char(0x100));
-    testParser("ĀĀĀ", "āāā", parser3("ĀĀĀāāā"));
+    expectResult([]const u8, .{ .value = "ĀĀĀ", .rest = "āāā" }, parser3("ĀĀĀāāā"));
 
     const parser4 = comptime manyN(3, range('a', 'b'));
-    testParser([_]u21{ 'a', 'b', 'a' }, "bab", parser4("ababab"));
+    expectResult([3]u21, .{ .value = [_]u21{ 'a', 'b', 'a' }, .rest = "bab" }, parser4("ababab"));
 }
 
 /// Construct a parser that will call `parser` on the string
@@ -297,9 +297,9 @@ pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
 
 test "opt" {
     const parser1 = comptime opt(range('a', 'z'));
-    testParser(@as(?u21, 'a'), "", parser1("a"));
-    testParser(@as(?u21, 'a'), "a", parser1("aa"));
-    testParser(@as(?u21, null), "1", parser1("1"));
+    expectResult(?u21, .{ .value = 'a', .rest = "" }, parser1("a"));
+    expectResult(?u21, .{ .value = 'a', .rest = "a" }, parser1("aa"));
+    expectResult(?u21, .{ .value = null, .rest = "1" }, parser1("1"));
 }
 
 fn ParsersTypes(comptime parsers: anytype) []const type {
@@ -365,16 +365,16 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
 test "combine" {
     const parser1 = comptime combine(.{ opt(range('a', 'b')), opt(range('d', 'e')) });
     const Res = ParserResult(@TypeOf(parser1));
-    testParser(Res{ .@"0" = 'a', .@"1" = 'd' }, "", parser1("ad"));
-    testParser(Res{ .@"0" = 'a', .@"1" = null }, "a", parser1("aa"));
-    testParser(Res{ .@"0" = null, .@"1" = 'd' }, "a", parser1("da"));
-    testParser(Res{ .@"0" = null, .@"1" = null }, "qa", parser1("qa"));
+    expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' }, .rest = "" }, parser1("ad"));
+    expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = null }, .rest = "a" }, parser1("aa"));
+    expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = 'd' }, .rest = "a" }, parser1("da"));
+    expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = null }, .rest = "qa" }, parser1("qa"));
 
     const parser2 = comptime combine(.{ opt(range('a', 'b')), char('d') });
-    testParser('a', "", parser2("ad"));
-    testParser('a', "a", parser2("ada"));
-    testParser(@as(?u21, null), "a", parser2("da"));
-    testParser(null, "", parser2("qa"));
+    expectResult(?u21, .{ .value = 'a', .rest = "" }, parser2("ad"));
+    expectResult(?u21, .{ .value = 'a', .rest = "a" }, parser2("ada"));
+    expectResult(?u21, .{ .value = null, .rest = "a" }, parser2("da"));
+    expectResult(?u21, null, parser2("qa"));
 }
 
 /// Takes a tuple of `Parser(T)` and constructs a parser that
@@ -396,15 +396,15 @@ pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))
 
 test "oneOf" {
     const parser1 = comptime oneOf(.{ range('a', 'b'), range('d', 'e') });
-    testParser('a', "", parser1("a"));
-    testParser('b', "", parser1("b"));
-    testParser('d', "", parser1("d"));
-    testParser('e', "", parser1("e"));
-    testParser('a', "a", parser1("aa"));
-    testParser('b', "a", parser1("ba"));
-    testParser('d', "a", parser1("da"));
-    testParser('e', "a", parser1("ea"));
-    testParser(null, "", parser1("q"));
+    expectResult(u21, .{ .value = 'a', .rest = "" }, parser1("a"));
+    expectResult(u21, .{ .value = 'b', .rest = "" }, parser1("b"));
+    expectResult(u21, .{ .value = 'd', .rest = "" }, parser1("d"));
+    expectResult(u21, .{ .value = 'e', .rest = "" }, parser1("e"));
+    expectResult(u21, .{ .value = 'a', .rest = "a" }, parser1("aa"));
+    expectResult(u21, .{ .value = 'b', .rest = "a" }, parser1("ba"));
+    expectResult(u21, .{ .value = 'd', .rest = "a" }, parser1("da"));
+    expectResult(u21, .{ .value = 'e', .rest = "a" }, parser1("ea"));
+    expectResult(u21, null, parser1("q"));
 }
 
 /// Takes any parser (preferable not of type `Parser([]const u8)`)
@@ -422,15 +422,15 @@ pub fn asStr(comptime parser: anytype) Parser([]const u8) {
 
 test "asStr" {
     const parser1 = comptime asStr(char('a'));
-    testParser("a", "", parser1("a"));
-    testParser("a", "a", parser1("aa"));
-    testParser(null, "", parser1("ba"));
+    expectResult([]const u8, .{ .value = "a", .rest = "" }, parser1("a"));
+    expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser1("aa"));
+    expectResult([]const u8, null, parser1("ba"));
 
     const parser2 = comptime asStr(combine(.{ opt(range('a', 'b')), opt(range('d', 'e')) }));
-    testParser("ad", "", parser2("ad"));
-    testParser("a", "a", parser2("aa"));
-    testParser("d", "a", parser2("da"));
-    testParser("", "qa", parser2("qa"));
+    expectResult([]const u8, .{ .value = "ad", .rest = "" }, parser2("ad"));
+    expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser2("aa"));
+    expectResult([]const u8, .{ .value = "d", .rest = "a" }, parser2("da"));
+    expectResult([]const u8, .{ .value = "", .rest = "qa" }, parser2("qa"));
 }
 
 /// Constructs a parser that has its result converted with the
@@ -504,33 +504,33 @@ pub fn toBool(str: []const u8) ?bool {
 
 test "convert" {
     const parser1 = comptime convert(u8, toInt(u8, 10), asStr(string("123")));
-    testParser(123, "", parser1("123"));
-    testParser(123, "a", parser1("123a"));
-    testParser(null, "", parser1("12"));
+    expectResult(u8, .{ .value = 123, .rest = "" }, parser1("123"));
+    expectResult(u8, .{ .value = 123, .rest = "a" }, parser1("123a"));
+    expectResult(u8, null, parser1("12"));
 
     const parser2 = comptime convert(u21, toChar, asStr(string("a")));
-    testParser('a', "", parser2("a"));
-    testParser('a', "a", parser2("aa"));
-    testParser(null, "", parser2("b"));
+    expectResult(u21, .{ .value = 'a', .rest = "" }, parser2("a"));
+    expectResult(u21, .{ .value = 'a', .rest = "a" }, parser2("aa"));
+    expectResult(u21, null, parser2("b"));
 
     const parser3 = comptime convert(bool, toBool, any);
-    testParser(true, "", parser3("true"));
-    testParser(false, "", parser3("false"));
-    testParser(null, "", parser3("b"));
+    expectResult(bool, .{ .value = true, .rest = "" }, parser3("true"));
+    expectResult(bool, .{ .value = false, .rest = "" }, parser3("false"));
+    expectResult(bool, null, parser3("b"));
 
     const parser4 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
-    testParser(1.23, "", parser4("1.23"));
-    testParser(1.23, "a", parser4("1.23a"));
-    testParser(null, "", parser4("1.2"));
+    expectResult(f32, .{ .value = 1.23, .rest = "" }, parser4("1.23"));
+    expectResult(f32, .{ .value = 1.23, .rest = "a" }, parser4("1.23a"));
+    expectResult(f32, null, parser4("1.2"));
 
     const E = packed enum(u8) { a, b, _ };
     const parser5 = comptime convert(E, toEnum(E), any);
-    testParser(E.a, "", parser5("a"));
-    testParser(E.b, "", parser5("b"));
-    testParser(null, "2", parser5("2"));
+    expectResult(E, .{ .value = E.a, .rest = "" }, parser5("a"));
+    expectResult(E, .{ .value = E.b, .rest = "" }, parser5("b"));
+    expectResult(E, null, parser5("2"));
 
     const parser6 = comptime convert(u21, toChar, asStr(string("Āā")));
-    testParser(0x100, "", parser6("Āā"));
+    expectResult(u21, .{ .value = 0x100, .rest = "" }, parser6("Āā"));
 }
 
 /// Constructs a parser that has its result converted with the
@@ -588,14 +588,14 @@ test "as" {
         y: usize,
     };
     const parser1 = comptime as(Point, toStruct(Point), combine(.{ int(usize, 10), char(' '), int(usize, 10) }));
-    testParser(.{ .x = 10, .y = 10 }, "", parser1("10 10"));
-    testParser(.{ .x = 20, .y = 20 }, "aa", parser1("20 20aa"));
-    testParser(null, "", parser1("12"));
+    expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser1("10 10"));
+    expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1("20 20aa"));
+    expectResult(Point, null, parser1("12"));
 
     const parser2 = comptime as(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), char(' ') })));
-    testParser(.{ .x = 10, .y = 10 }, "", parser2("10 10 "));
-    testParser(.{ .x = 20, .y = 20 }, "aa", parser2("20 20 aa"));
-    testParser(null, "", parser1("12"));
+    expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser2("10 10 "));
+    expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2("20 20 aa"));
+    expectResult(Point, null, parser1("12"));
 }
 
 /// Constructs a parser that discards the result returned from the parser
@@ -608,9 +608,9 @@ pub fn discard(comptime parser: anytype) Parser(void) {
 
 test "discard" {
     const parser = comptime discard(many(char(' ')));
-    testParser({}, "abc", parser(" abc"));
-    testParser({}, "abc", parser("  abc"));
-    testParser({}, "abc", parser("   abc"));
+    expectResult(void, .{ .value = {}, .rest = "abc" }, parser(" abc"));
+    expectResult(void, .{ .value = {}, .rest = "abc" }, parser("  abc"));
+    expectResult(void, .{ .value = {}, .rest = "abc" }, parser("   abc"));
 }
 
 /// Construct a parser that succeeds if it parser an integer of
@@ -663,35 +663,33 @@ pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
 
 test "int" {
     const parser1 = int(u8, 10);
-    testParser(0, "", parser1("0"));
-    testParser(1, "", parser1("1"));
-    testParser(1, "a", parser1("1a"));
-    testParser(255, "", parser1("255"));
-    testParser(null, "", parser1("256"));
+    expectResult(u8, .{ .value = 0, .rest = "" }, parser1("0"));
+    expectResult(u8, .{ .value = 1, .rest = "" }, parser1("1"));
+    expectResult(u8, .{ .value = 1, .rest = "a" }, parser1("1a"));
+    expectResult(u8, .{ .value = 255, .rest = "" }, parser1("255"));
+    expectResult(u8, null, parser1("256"));
 
     const parser2 = int(u8, 16);
-    testParser(0x00, "", parser2("0"));
-    testParser(0x01, "", parser2("1"));
-    testParser(0x1a, "", parser2("1a"));
-    testParser(0x01, "g", parser2("1g"));
-    testParser(0xff, "", parser2("ff"));
-    testParser(0xff, "", parser2("FF"));
-    testParser(0x10, "0", parser2("100"));
+    expectResult(u8, .{ .value = 0x00, .rest = "" }, parser2("0"));
+    expectResult(u8, .{ .value = 0x01, .rest = "" }, parser2("1"));
+    expectResult(u8, .{ .value = 0x1a, .rest = "" }, parser2("1a"));
+    expectResult(u8, .{ .value = 0x01, .rest = "g" }, parser2("1g"));
+    expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2("ff"));
+    expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2("FF"));
+    expectResult(u8, .{ .value = 0x10, .rest = "0" }, parser2("100"));
 }
 
-fn testParser(expected_value: anytype, rest: []const u8, m_res: anytype) void {
-    switch (@typeInfo(@TypeOf(expected_value))) {
-        .Null => testing.expect(m_res == null),
-        else => {
-            testing.expect(m_res != null);
-            testing.expectEqualStrings(rest, m_res.?.rest);
-            const T = @TypeOf(m_res.?.value);
-            switch (T) {
-                []u8,
-                []const u8,
-                => testing.expectEqualStrings(expected_value, m_res.?.value),
-                else => testing.expectEqual(@as(T, expected_value), m_res.?.value),
-            }
-        },
+pub fn expectResult(comptime T: type, m_expect: ?Result(T), m_actual: ?Result(T)) void {
+    const expect = m_expect orelse {
+        testing.expectEqual(@as(?Result(T), null), m_actual);
+        return;
+    };
+    testing.expect(m_actual != null);
+    const actual = m_actual.?;
+
+    testing.expectEqualStrings(expect.rest, actual.rest);
+    switch (T) {
+        []const u8 => testing.expectEqualStrings(expect.value, actual.value),
+        else => testing.expectEqual(expect.value, actual.value),
     }
 }

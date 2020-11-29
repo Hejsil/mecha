@@ -559,7 +559,7 @@ fn ToStructResult(comptime T: type) type {
     }.func);
 }
 
-/// Constructs a convert function for `as` that takes a tuple and
+/// Constructs a convert function for `as` that takes a tuple or an array and
 /// converts it into the struct `T`. Fields will be assigned in order,
 /// so `tuple[i]` will be assigned to the ith field of `T`. This function
 /// will give a compile error if `T` and the tuple does not have the same
@@ -568,11 +568,9 @@ fn ToStructResult(comptime T: type) type {
 pub fn toStruct(comptime T: type) ToStructResult(T) {
     return struct {
         fn func(tuple: anytype) T {
-            const Tup = @TypeOf(tuple);
             const struct_fields = @typeInfo(T).Struct.fields;
-            const tuple_fields = @typeInfo(Tup).Struct.fields;
-            if (struct_fields.len != tuple_fields.len)
-                @compileError(@typeName(T) ++ " and " ++ @typeName(Tup) ++ " does not have " ++
+            if (struct_fields.len != tuple.len)
+                @compileError(@typeName(T) ++ " and " ++ @typeName(@TypeOf(tuple)) ++ " does not have " ++
                     "same number of fields. Convertion is not possible.");
 
             var res: T = undefined;
@@ -592,6 +590,11 @@ test "as" {
     const parser1 = comptime as(Point, toStruct(Point), combine(.{ int(usize, 10), char(' '), int(usize, 10) }));
     testParser(.{ .x = 10, .y = 10 }, "", parser1("10 10"));
     testParser(.{ .x = 20, .y = 20 }, "aa", parser1("20 20aa"));
+    testParser(null, "", parser1("12"));
+
+    const parser2 = comptime as(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), char(' ') })));
+    testParser(.{ .x = 10, .y = 10 }, "", parser2("10 10 "));
+    testParser(.{ .x = 20, .y = 20 }, "aa", parser2("20 20 aa"));
     testParser(null, "", parser1("12"));
 }
 

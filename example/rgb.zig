@@ -14,8 +14,8 @@ fn toByte(v: u4) u8 {
 
 const hex1 = as(u8, toByte, int(u4, 16));
 const hex2 = int(u8, 16);
-const rgb1 = as(Rgb, toStruct(Rgb), combine(.{ hex1, hex1, hex1 }));
-const rgb2 = as(Rgb, toStruct(Rgb), combine(.{ hex2, hex2, hex2 }));
+const rgb1 = as(Rgb, toStruct(Rgb), manyN(3, hex1));
+const rgb2 = as(Rgb, toStruct(Rgb), manyN(3, hex2));
 const rgb = combine(.{
     char('#'),
     oneOf(.{

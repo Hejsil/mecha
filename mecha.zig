@@ -551,17 +551,49 @@ test "discard" {
 /// Construct a parser that succeeds if it parser an integer of
 /// `base`. The result of this parser will be the string containing
 /// the match.
-pub fn intToken(comptime base: u8) Parser([]const u8) {
+pub fn intToken(comptime base: u8, comptime max_digits: usize) Parser([]const u8) {
     return comptime asStr(combine(.{
         opt(char('-')),
-        manyRange(1, math.maxInt(usize), digit(base)),
+        manyRange(1, max_digits, digit(base)),
     }));
+}
+
+fn digits(val: anytype, base: u8) usize {
+    var res: usize = 0;
+    var tmp = val;
+    while (tmp != 0) : (tmp /= base)
+        res += 1;
+    return math.max(1, res);
+}
+
+test "digits" {
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 0b0), 2));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 000), 10));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 0x0), 16));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 0b1), 2));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 001), 10));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 0x1), 16));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 009), 10));
+    testing.expectEqual(@as(usize, 1), digits(@as(usize, 0xF), 16));
+    testing.expectEqual(@as(usize, 2), digits(@as(usize, 0b10), 2));
+    testing.expectEqual(@as(usize, 2), digits(@as(usize, 0010), 10));
+    testing.expectEqual(@as(usize, 2), digits(@as(usize, 0x10), 16));
+    testing.expectEqual(@as(usize, 2), digits(@as(usize, 0b11), 2));
+    testing.expectEqual(@as(usize, 2), digits(@as(usize, 0099), 10));
+    testing.expectEqual(@as(usize, 2), digits(@as(usize, 0xFF), 16));
+    testing.expectEqual(@as(usize, 3), digits(@as(usize, 0b100), 2));
+    testing.expectEqual(@as(usize, 3), digits(@as(usize, 00100), 10));
+    testing.expectEqual(@as(usize, 3), digits(@as(usize, 0x100), 16));
 }
 
 /// Same as `intToken` but also converts the parsed string
 /// to an integer.
 pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
-    return comptime convert(Int, toInt(Int, base), intToken(base));
+    return comptime convert(
+        Int,
+        toInt(Int, base),
+        intToken(base, digits(math.maxInt(Int), base)),
+    );
 }
 
 test "int" {
@@ -579,7 +611,7 @@ test "int" {
     testParser(0x01, "g", parser2("1g"));
     testParser(0xff, "", parser2("ff"));
     testParser(0xff, "", parser2("FF"));
-    testParser(null, "", parser2("100"));
+    testParser(0x10, "0", parser2("100"));
 }
 
 fn testParser(expected_value: anytype, rest: []const u8, m_res: anytype) void {

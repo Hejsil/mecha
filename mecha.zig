@@ -304,7 +304,7 @@ test "opt" {
 
 fn ParsersTypes(comptime parsers: anytype) []const type {
     var types: []const type = &[_]type{};
-    inline for (parsers) |parser| {
+    for (parsers) |parser| {
         const T = ParserResult(@TypeOf(parser));
         if (T != void)
             types = types ++ [_]type{T};
@@ -533,6 +533,68 @@ test "convert" {
     testParser(0x100, "", parser6("Āā"));
 }
 
+/// Constructs a parser that has its result converted with the
+/// `conv` function. The ´conv` functions signature is
+/// `fn (ParserResult(parser)) T`, so this function should only
+/// be used for conversions that cannot fail. See `convert`.
+pub fn as(
+    comptime T: type,
+    comptime conv: anytype,
+    comptime parser: anytype,
+) Parser(T) {
+    return struct {
+        const Res = Result(T);
+        fn func(str: []const u8) ?Res {
+            const r = parser(str) orelse return null;
+            return Res.init(conv(r.value), r.rest);
+        }
+    }.func;
+}
+
+fn ToStructResult(comptime T: type) type {
+    return @TypeOf(struct {
+        fn func(tuple: anytype) T {
+            return undefined;
+        }
+    }.func);
+}
+
+/// Constructs a convert function for `as` that takes a tuple and
+/// converts it into the struct `T`. Fields will be assigned in order,
+/// so `tuple[i]` will be assigned to the ith field of `T`. This function
+/// will give a compile error if `T` and the tuple does not have the same
+/// number of fields, or if the items of the tuple cannot be coerced into
+/// the fields of the struct.
+pub fn toStruct(comptime T: type) ToStructResult(T) {
+    return struct {
+        fn func(tuple: anytype) T {
+            const Tup = @TypeOf(tuple);
+            const struct_fields = @typeInfo(T).Struct.fields;
+            const tuple_fields = @typeInfo(Tup).Struct.fields;
+            if (struct_fields.len != tuple_fields.len)
+                @compileError(@typeName(T) ++ " and " ++ @typeName(Tup) ++ " does not have " ++
+                    "same number of fields. Convertion is not possible.");
+
+            var res: T = undefined;
+            inline for (struct_fields) |field, i|
+                @field(res, field.name) = tuple[i];
+
+            return res;
+        }
+    }.func;
+}
+
+test "as" {
+    const Point = struct {
+        x: usize,
+        y: usize,
+    };
+    const parser1 = comptime as(Point, toStruct(Point), combine(.{ int(usize, 10), char(' '), int(usize, 10) }));
+    testParser(.{ .x = 10, .y = 10 }, "", parser1("10 10"));
+    testParser(.{ .x = 20, .y = 20 }, "aa", parser1("20 20aa"));
+    testParser(null, "", parser1("12"));
+}
+
 /// Constructs a parser that discards the result returned from the parser
 /// it warps.
 pub fn discard(comptime parser: anytype) Parser(void) {
@@ -561,7 +623,7 @@ pub fn intToken(comptime base: u8, comptime max_digits: usize) Parser([]const u8
 fn digits(val: anytype, base: u8) usize {
     var res: usize = 0;
     var tmp = val;
-    while (tmp != 0) : (tmp /= base)
+    while (tmp != 0) : (tmp /= @intCast(@TypeOf(val), base))
         res += 1;
     return math.max(1, res);
 }

@@ -13,7 +13,7 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v1.2.5
         with:
           version: 0.7.0
-      - run: zig test mecha.zig
+      - run: zig build
   lint:
     runs-on: ubuntu-latest
     steps:

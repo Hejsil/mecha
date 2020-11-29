@@ -16,7 +16,7 @@ const Rgb = struct {
     b: u8,
 };
 
-fn toRgb(tuple: var) ?Rgb {
+fn toRgb(tuple: anytype) ?Rgb {
     return Rgb{
         .r = tuple[0],
         .g = tuple[1],

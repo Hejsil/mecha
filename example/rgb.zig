@@ -1,10 +1,3 @@
-# Mecha
-
-A parser combinator library for the [`Zig`](https://ziglang.org/)
-programming language. Time to make your own parser mech!
-![mech](https://thumbs.gfycat.com/GrippingElatedAzurevasesponge-size_restricted.gif)
-
-```zig
 const std = @import("std");
 
 usingnamespace @import("mecha");
@@ -42,6 +35,3 @@ test "rgb" {
     std.testing.expectEqual(@as(u8, 0xbb), b.g);
     std.testing.expectEqual(@as(u8, 0xcc), b.b);
 }
-
-```
-

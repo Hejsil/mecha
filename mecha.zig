@@ -537,7 +537,7 @@ test "convert" {
 /// `conv` function. The ´conv` functions signature is
 /// `fn (ParserResult(parser)) T`, so this function should only
 /// be used for conversions that cannot fail. See `convert`.
-pub fn as(
+pub fn map(
     comptime T: type,
     comptime conv: anytype,
     comptime parser: anytype,
@@ -582,17 +582,17 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
     }.func;
 }
 
-test "as" {
+test "map" {
     const Point = struct {
         x: usize,
         y: usize,
     };
-    const parser1 = comptime as(Point, toStruct(Point), combine(.{ int(usize, 10), char(' '), int(usize, 10) }));
+    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, 10), char(' '), int(usize, 10) }));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser1("10 10"));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1("20 20aa"));
     expectResult(Point, null, parser1("12"));
 
-    const parser2 = comptime as(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), char(' ') })));
+    const parser2 = comptime map(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), char(' ') })));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser2("10 10 "));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2("20 20 aa"));
     expectResult(Point, null, parser1("12"));

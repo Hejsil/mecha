@@ -26,10 +26,14 @@ pub fn Parser(comptime T: type) type {
     return fn ([]const u8) ?Result(T);
 }
 
+fn ReturnType(comptime P: type) type {
+    return @typeInfo(P).Fn.return_type.?;
+}
+
 /// The reverse of `Parser`. Give it a `Parser` type
 /// and this function will give you `T`.
 pub fn ParserResult(comptime P: type) type {
-    return @typeInfo(@typeInfo(P).Fn.return_type.?).Optional.child.Value;
+    return @typeInfo(ReturnType(P)).Optional.child.Value;
 }
 
 /// A parser that only succeeds on the end of the string.
@@ -677,6 +681,39 @@ test "int" {
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2("ff"));
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2("FF"));
     expectResult(u8, .{ .value = 0x10, .rest = "0" }, parser2("100"));
+}
+
+/// Creates a parser that calls a function to optain its underlying parser.
+/// This function introduces the indirection required for recursive grammars.
+/// ```
+/// const digit_10 = discard(digit(10));
+/// const digits = oneOf(.{ combine(.{ digit_10, ref(digits_ref) }), digit_10 });
+/// fn digits_ref() Parser(void) {
+///     return digits;
+/// };
+/// ```
+pub fn ref(comptime func: anytype) Parser(ParserResult(ReturnType(@TypeOf(func)))) {
+    return struct {
+        const P = ReturnType(@TypeOf(func));
+        const T = ParserResult(P);
+        fn res(str: []const u8) ?Result(T) {
+            return func()(str);
+        }
+    }.res;
+}
+
+test "ref" {
+    const Scope = struct {
+        const _digit = discard(digit(10));
+        const _digits = oneOf(.{ combine(.{ _digit, _digits_ref }), _digit });
+        const _digits_ref = ref(struct {
+            fn f() Parser(void) {
+                return _digits;
+            }
+        }.f);
+    };
+    const _digits = Scope._digits;
+    expectResult(void, .{ .value = {}, .rest = "" }, _digits("0"));
 }
 
 pub fn expectResult(comptime T: type, m_expect: ?Result(T), m_actual: ?Result(T)) void {

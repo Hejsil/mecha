@@ -23,13 +23,13 @@ fn toByte2(v: [2]u8) u8 {
     return v[0] * 0x10 + v[1];
 }
 
-const hex = convert(u8, toInt(u8, 16), asStr(digit(16)));
+const hex = convert(u8, toInt(u8, 16), asStr(ascii.digit(16)));
 const hex1 = map(u8, toByte, hex);
 const hex2 = map(u8, toByte2, manyN(2, hex));
 const rgb1 = map(Rgb, toStruct(Rgb), manyN(3, hex1));
 const rgb2 = map(Rgb, toStruct(Rgb), manyN(3, hex2));
 const rgb = combine(.{
-    char('#'),
+    ascii.char('#'),
     oneOf(.{
         rgb2,
         rgb1,

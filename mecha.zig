@@ -7,6 +7,9 @@ const mem = std.mem;
 const unicode = std.unicode;
 const testing = std.testing;
 
+pub const ascii = @import("src/ascii.zig");
+pub const utf8 = @import("src/utf8.zig");
+
 /// The result of a successful parse
 pub fn Result(comptime T: type) type {
     return struct {
@@ -15,8 +18,8 @@ pub fn Result(comptime T: type) type {
         value: T,
         rest: []const u8,
 
-        pub fn init(v: T, rest: []const u8) @This() {
-            return .{ .value = v, .rest = rest };
+        pub fn init(v: T, _rest: []const u8) @This() {
+            return .{ .value = v, .rest = _rest };
         }
     };
 }
@@ -50,139 +53,13 @@ test "eos" {
 
 /// A parser that always succeeds with the result being the
 /// entire string. The same as the '.*$' regex.
-pub fn any(str: []const u8) ?Result([]const u8) {
+pub fn rest(str: []const u8) ?Result([]const u8) {
     return Result([]const u8).init(str, str[str.len..]);
 }
 
-test "any" {
-    expectResult([]const u8, .{ .value = "", .rest = "" }, any(""));
-    expectResult([]const u8, .{ .value = "a", .rest = "" }, any("a"));
-}
-
-/// Constructs a parser that only succeeds if the string starts with `c`.
-pub fn char(comptime c: u21) Parser(void) {
-    comptime {
-        var array: [4]u8 = undefined;
-        const len = unicode.utf8Encode(c, array[0..]) catch unreachable;
-        return string(array[0..len]);
-    }
-}
-
-test "char" {
-    expectResult(void, .{ .value = {}, .rest = "" }, char('a')("a"));
-    expectResult(void, .{ .value = {}, .rest = "a" }, char('a')("aa"));
-    expectResult(void, null, char('a')("ba"));
-    expectResult(void, null, char('a')(""));
-    expectResult(void, .{ .value = {}, .rest = "ā" }, char(0x100)("Āā"));
-    expectResult(void, null, char(0x100)(""));
-    expectResult(void, null, char(0x100)("\xc0"));
-}
-
-/// Constructs a parser that only succeeds if the string starts with
-/// a codepoint that is in between `start` and `end` inclusively.
-/// The parsers result will be the codepoint parsed.
-pub fn range(comptime start: u21, comptime end: u21) Parser(u21) {
-    return struct {
-        const Res = Result(u21);
-        fn func(str: []const u8) ?Res {
-            if (str.len == 0)
-                return null;
-
-            if (end <= math.maxInt(u7)) {
-                switch (str[0]) {
-                    start...end => return Res.init(str[0], str[1..]),
-                    else => return null,
-                }
-            } else {
-                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
-                if (cp_len > str.len)
-                    return null;
-
-                const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
-                switch (cp) {
-                    start...end => return Res.init(cp, str[cp_len..]),
-                    else => return null,
-                }
-            }
-        }
-    }.func;
-}
-
-test "range" {
-    expectResult(u21, .{ .value = 'a', .rest = "" }, range('a', 'z')("a"));
-    expectResult(u21, .{ .value = 'c', .rest = "" }, range('a', 'z')("c"));
-    expectResult(u21, .{ .value = 'z', .rest = "" }, range('a', 'z')("z"));
-    expectResult(u21, .{ .value = 'a', .rest = "a" }, range('a', 'z')("aa"));
-    expectResult(u21, .{ .value = 'c', .rest = "a" }, range('a', 'z')("ca"));
-    expectResult(u21, .{ .value = 'z', .rest = "a" }, range('a', 'z')("za"));
-    expectResult(u21, null, range('a', 'z')("1"));
-    expectResult(u21, null, range('a', 'z')(""));
-    expectResult(u21, .{ .value = 0x100, .rest = "ā" }, range(0x100, 0x100)("Āā"));
-    expectResult(u21, null, range(0x100, 0x100)("aa"));
-    expectResult(u21, null, range(0x100, 0x100)("\xc0"));
-}
-
-/// A parser that succeeds if the string starts with an alphabetic
-/// character. The parsers result will be the character parsed.
-pub const alpha = oneOf(.{ range('a', 'z'), range('A', 'Z') });
-
-test "alpha" {
-    var i: u16 = 0;
-    while (i <= 255) : (i += 1) {
-        const c = @intCast(u8, i);
-        switch (c) {
-            'a'...'z',
-            'A'...'Z',
-            => expectResult(u21, .{ .value = c, .rest = "" }, alpha(&[_]u8{c})),
-            else => expectResult(u21, null, alpha(&[_]u8{c})),
-        }
-    }
-}
-
-/// Construct a parser that succeeds if the string starts with a
-/// character that is a digit in `base`. The parsers result will be
-/// the character parsed.
-pub fn digit(comptime base: u8) Parser(u21) {
-    debug.assert(base != 0);
-    if (base <= 10)
-        return range('0', '0' + (base - 1));
-    return comptime oneOf(.{
-        range('0', '9'),
-        range('a', 'a' + (base - 11)),
-        range('A', 'A' + (base - 11)),
-    });
-}
-
-test "alpha" {
-    var i: u16 = 0;
-    i = 0;
-    while (i <= 255) : (i += 1) {
-        const c = @intCast(u8, i);
-        switch (c) {
-            '0'...'1' => expectResult(u21, .{ .value = c, .rest = "" }, digit(2)(&[_]u8{c})),
-            else => expectResult(u21, null, digit(2)(&[_]u8{c})),
-        }
-    }
-
-    i = 0;
-    while (i <= 255) : (i += 1) {
-        const c = @intCast(u8, i);
-        switch (c) {
-            '0'...'9' => expectResult(u21, .{ .value = c, .rest = "" }, digit(10)(&[_]u8{c})),
-            else => expectResult(u21, null, digit(10)(&[_]u8{c})),
-        }
-    }
-    i = 0;
-    while (i <= 255) : (i += 1) {
-        const c = @intCast(u8, i);
-        switch (c) {
-            '0'...'9',
-            'a'...'f',
-            'A'...'F',
-            => expectResult(u21, .{ .value = c, .rest = "" }, digit(16)(&[_]u8{c})),
-            else => expectResult(u21, null, digit(16)(&[_]u8{c})),
-        }
-    }
+test "rest" {
+    expectResult([]const u8, .{ .value = "", .rest = "" }, rest(""));
+    expectResult([]const u8, .{ .value = "a", .rest = "" }, rest("a"));
 }
 
 /// Construct a parser that succeeds if the string passed in starts
@@ -278,11 +155,11 @@ test "many" {
     expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser2("ababa"));
     expectResult([]const u8, .{ .value = "abab", .rest = "ab" }, parser2("ababab"));
 
-    const parser3 = comptime many(char(0x100));
+    const parser3 = comptime many(utf8.char(0x100));
     expectResult([]const u8, .{ .value = "ĀĀĀ", .rest = "āāā" }, parser3("ĀĀĀāāā"));
 
-    const parser4 = comptime manyN(3, range('a', 'b'));
-    expectResult([3]u21, .{ .value = [_]u21{ 'a', 'b', 'a' }, .rest = "bab" }, parser4("ababab"));
+    const parser4 = comptime manyN(3, ascii.range('a', 'b'));
+    expectResult([3]u8, .{ .value = "aba".*, .rest = "bab" }, parser4("ababab"));
 }
 
 /// Construct a parser that will call `parser` on the string
@@ -300,10 +177,10 @@ pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
 }
 
 test "opt" {
-    const parser1 = comptime opt(range('a', 'z'));
-    expectResult(?u21, .{ .value = 'a', .rest = "" }, parser1("a"));
-    expectResult(?u21, .{ .value = 'a', .rest = "a" }, parser1("aa"));
-    expectResult(?u21, .{ .value = null, .rest = "1" }, parser1("1"));
+    const parser1 = comptime opt(ascii.range('a', 'z'));
+    expectResult(?u8, .{ .value = 'a', .rest = "" }, parser1("a"));
+    expectResult(?u8, .{ .value = 'a', .rest = "a" }, parser1("aa"));
+    expectResult(?u8, .{ .value = null, .rest = "1" }, parser1("1"));
 }
 
 fn ParsersTypes(comptime parsers: anytype) []const type {
@@ -367,18 +244,18 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
 }
 
 test "combine" {
-    const parser1 = comptime combine(.{ opt(range('a', 'b')), opt(range('d', 'e')) });
+    const parser1 = comptime combine(.{ opt(ascii.range('a', 'b')), opt(ascii.range('d', 'e')) });
     const Res = ParserResult(@TypeOf(parser1));
     expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' }, .rest = "" }, parser1("ad"));
     expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = null }, .rest = "a" }, parser1("aa"));
     expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = 'd' }, .rest = "a" }, parser1("da"));
     expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = null }, .rest = "qa" }, parser1("qa"));
 
-    const parser2 = comptime combine(.{ opt(range('a', 'b')), char('d') });
-    expectResult(?u21, .{ .value = 'a', .rest = "" }, parser2("ad"));
-    expectResult(?u21, .{ .value = 'a', .rest = "a" }, parser2("ada"));
-    expectResult(?u21, .{ .value = null, .rest = "a" }, parser2("da"));
-    expectResult(?u21, null, parser2("qa"));
+    const parser2 = comptime combine(.{ opt(ascii.range('a', 'b')), ascii.char('d') });
+    expectResult(?u8, .{ .value = 'a', .rest = "" }, parser2("ad"));
+    expectResult(?u8, .{ .value = 'a', .rest = "a" }, parser2("ada"));
+    expectResult(?u8, .{ .value = null, .rest = "a" }, parser2("da"));
+    expectResult(?u8, null, parser2("qa"));
 }
 
 /// Takes a tuple of `Parser(T)` and constructs a parser that
@@ -399,16 +276,16 @@ pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))
 }
 
 test "oneOf" {
-    const parser1 = comptime oneOf(.{ range('a', 'b'), range('d', 'e') });
-    expectResult(u21, .{ .value = 'a', .rest = "" }, parser1("a"));
-    expectResult(u21, .{ .value = 'b', .rest = "" }, parser1("b"));
-    expectResult(u21, .{ .value = 'd', .rest = "" }, parser1("d"));
-    expectResult(u21, .{ .value = 'e', .rest = "" }, parser1("e"));
-    expectResult(u21, .{ .value = 'a', .rest = "a" }, parser1("aa"));
-    expectResult(u21, .{ .value = 'b', .rest = "a" }, parser1("ba"));
-    expectResult(u21, .{ .value = 'd', .rest = "a" }, parser1("da"));
-    expectResult(u21, .{ .value = 'e', .rest = "a" }, parser1("ea"));
-    expectResult(u21, null, parser1("q"));
+    const parser1 = comptime oneOf(.{ ascii.range('a', 'b'), ascii.range('d', 'e') });
+    expectResult(u8, .{ .value = 'a', .rest = "" }, parser1("a"));
+    expectResult(u8, .{ .value = 'b', .rest = "" }, parser1("b"));
+    expectResult(u8, .{ .value = 'd', .rest = "" }, parser1("d"));
+    expectResult(u8, .{ .value = 'e', .rest = "" }, parser1("e"));
+    expectResult(u8, .{ .value = 'a', .rest = "a" }, parser1("aa"));
+    expectResult(u8, .{ .value = 'b', .rest = "a" }, parser1("ba"));
+    expectResult(u8, .{ .value = 'd', .rest = "a" }, parser1("da"));
+    expectResult(u8, .{ .value = 'e', .rest = "a" }, parser1("ea"));
+    expectResult(u8, null, parser1("q"));
 }
 
 /// Takes any parser (preferable not of type `Parser([]const u8)`)
@@ -425,12 +302,12 @@ pub fn asStr(comptime parser: anytype) Parser([]const u8) {
 }
 
 test "asStr" {
-    const parser1 = comptime asStr(char('a'));
+    const parser1 = comptime asStr(ascii.char('a'));
     expectResult([]const u8, .{ .value = "a", .rest = "" }, parser1("a"));
     expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser1("aa"));
     expectResult([]const u8, null, parser1("ba"));
 
-    const parser2 = comptime asStr(combine(.{ opt(range('a', 'b')), opt(range('d', 'e')) }));
+    const parser2 = comptime asStr(combine(.{ opt(ascii.range('a', 'b')), opt(ascii.range('d', 'e')) }));
     expectResult([]const u8, .{ .value = "ad", .rest = "" }, parser2("ad"));
     expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser2("aa"));
     expectResult([]const u8, .{ .value = "d", .rest = "a" }, parser2("da"));
@@ -517,7 +394,7 @@ test "convert" {
     expectResult(u21, .{ .value = 'a', .rest = "a" }, parser2("aa"));
     expectResult(u21, null, parser2("b"));
 
-    const parser3 = comptime convert(bool, toBool, any);
+    const parser3 = comptime convert(bool, toBool, rest);
     expectResult(bool, .{ .value = true, .rest = "" }, parser3("true"));
     expectResult(bool, .{ .value = false, .rest = "" }, parser3("false"));
     expectResult(bool, null, parser3("b"));
@@ -528,7 +405,7 @@ test "convert" {
     expectResult(f32, null, parser4("1.2"));
 
     const E = packed enum(u8) { a, b, _ };
-    const parser5 = comptime convert(E, toEnum(E), any);
+    const parser5 = comptime convert(E, toEnum(E), rest);
     expectResult(E, .{ .value = E.a, .rest = "" }, parser5("a"));
     expectResult(E, .{ .value = E.b, .rest = "" }, parser5("b"));
     expectResult(E, null, parser5("2"));
@@ -591,12 +468,12 @@ test "map" {
         x: usize,
         y: usize,
     };
-    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, 10), char(' '), int(usize, 10) }));
+    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, 10), ascii.char(' '), int(usize, 10) }));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser1("10 10"));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1("20 20aa"));
     expectResult(Point, null, parser1("12"));
 
-    const parser2 = comptime map(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), char(' ') })));
+    const parser2 = comptime map(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), ascii.char(' ') })));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser2("10 10 "));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2("20 20 aa"));
     expectResult(Point, null, parser1("12"));
@@ -611,7 +488,7 @@ pub fn discard(comptime parser: anytype) Parser(void) {
 }
 
 test "discard" {
-    const parser = comptime discard(many(char(' ')));
+    const parser = comptime discard(many(ascii.char(' ')));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(" abc"));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser("  abc"));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser("   abc"));
@@ -622,8 +499,8 @@ test "discard" {
 /// the match.
 pub fn intToken(comptime base: u8) Parser([]const u8) {
     return comptime asStr(combine(.{
-        opt(char('-')),
-        manyRange(1, math.maxInt(usize), digit(base)),
+        opt(ascii.char('-')),
+        manyRange(1, math.maxInt(usize), ascii.digit(base)),
     }));
 }
 
@@ -672,16 +549,13 @@ pub fn ref(comptime func: anytype) Parser(ParserResult(ReturnType(@TypeOf(func))
 
 test "ref" {
     const Scope = struct {
-        const _digit = discard(digit(10));
-        const _digits = oneOf(.{ combine(.{ _digit, _digits_ref }), _digit });
-        const _digits_ref = ref(struct {
-            fn f() Parser(void) {
-                return _digits;
-            }
-        }.f);
+        const digit = discard(ascii.digit(10));
+        const digits = oneOf(.{ combine(.{ digit, ref(digits_ref) }), digit });
+        fn digits_ref() Parser(void) {
+            return digits;
+        }
     };
-    const _digits = Scope._digits;
-    expectResult(void, .{ .value = {}, .rest = "" }, _digits("0"));
+    expectResult(void, .{ .value = {}, .rest = "" }, Scope.digits("0"));
 }
 
 pub fn expectResult(comptime T: type, m_expect: ?Result(T), m_actual: ?Result(T)) void {

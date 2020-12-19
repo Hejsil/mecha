@@ -18,6 +18,7 @@ pub fn build(b: *Builder) void {
         inline for ([_][]const u8{
             "mecha.zig",
             "example/rgb.zig",
+            // "example/json.zig",
         }) |test_file| {
             const tests = b.addTest(test_file);
             tests.addPackagePath("mecha", "mecha.zig");

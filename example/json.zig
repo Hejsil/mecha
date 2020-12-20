@@ -4,7 +4,7 @@ usingnamespace @import("mecha");
 const testing = std.testing;
 const builtin = std.builtin;
 
-const json = combine(.{ discard(opt(many(ws))), element });
+const json = combine(.{ ws, element });
 
 const value = oneOf(.{
     object,
@@ -18,12 +18,12 @@ const value = oneOf(.{
 
 const members = combine(.{
     member,
-    discard(many(combine(.{ comma, ref(membersRef) }))),
+    discard(many(combine(.{ comma, member }))),
 });
 
 const elements = combine(.{
     element,
-    discard(many(combine(.{ comma, ref(elementsRef) }))),
+    discard(many(combine(.{ comma, element }))),
 });
 
 const member = combine(.{ jstring, colon, element });
@@ -31,12 +31,9 @@ const object = combine(.{ lcurly, discard(opt(members)), rcurly });
 const array = combine(.{ lbracket, discard(opt(elements)), rbracket });
 const element = ref(valueRef);
 
-// zig fmt: off
-fn elementsRef() Parser(void) {return elements;}
-fn membersRef() Parser(void) {return members;}
-fn elementRef() Parser(void) {return element;}
-fn valueRef() Parser(void) {return value;}
-// zig fmt: on
+fn valueRef() Parser(void) {
+    return value;
+}
 
 const number = token(combine(.{ integer, fraction, exponent }));
 const jstring = token(combine(.{ utf8.char('"'), chars, utf8.char('"') }));
@@ -51,7 +48,7 @@ const colon = token(utf8.char(':'));
 const comma = token(utf8.char(','));
 
 fn token(comptime parser: anytype) Parser(void) {
-    return combine(.{ discard(parser), discard(many(ws)) });
+    return combine(.{ discard(parser), ws });
 }
 
 const chars = discard(many(char));
@@ -110,12 +107,12 @@ const sign = discard(opt(oneOf(.{
     utf8.char('-'),
 })));
 
-const ws = discard(oneOf(.{
+const ws = discard(many(oneOf(.{
     utf8.char(0x0020),
     utf8.char(0x000A),
     utf8.char(0x000D),
     utf8.char(0x0009),
-}));
+})));
 
 fn ok(comptime s: []const u8) void {
     const res = json(s);

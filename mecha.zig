@@ -234,8 +234,8 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
                         res.value = r.value;
                     } else {
                         res.value[j] = r.value;
-                        j += 1;
                     }
+                    j += 1;
                 }
             }
             return res;

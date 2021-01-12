@@ -29,6 +29,22 @@ pub fn Parser(comptime T: type) type {
     return fn ([]const u8) ?Result(T);
 }
 
+fn typecheckParser(comptime P: type) void {
+    switch (@typeInfo(P)) {
+        .Fn => |func| {
+            const R = func.return_type orelse
+                @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'");
+            const T = switch (@typeInfo(R)) {
+                .Optional => |o| o.child.Value,
+                else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
+            };
+            if (P != Parser(T))
+                @compileError("expected 'mecha.Parser(" ++ @typeName(T) ++ ")', found '" ++ @typeName(P) ++ "'");
+        },
+        else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
+    }
+}
+
 fn ReturnType(comptime P: type) type {
     return @typeInfo(P).Fn.return_type.?;
 }
@@ -36,6 +52,7 @@ fn ReturnType(comptime P: type) type {
 /// The reverse of `Parser`. Give it a `Parser` type
 /// and this function will give you `T`.
 pub fn ParserResult(comptime P: type) type {
+    typecheckParser(P);
     return @typeInfo(ReturnType(P)).Optional.child.Value;
 }
 
@@ -114,6 +131,7 @@ pub fn manyRange(
     comptime m: usize,
     comptime parser: anytype,
 ) Parser([]const u8) {
+    typecheckParser(@TypeOf(parser));
     return struct {
         const Res = Result([]const u8);
         fn func(str: []const u8) ?Res {
@@ -264,6 +282,9 @@ test "combine" {
 /// The parser will return with the result of the first parser
 /// that succeeded. The parsers result will be `Result(T)`
 pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))) {
+    inline for (parsers) |parser|
+        typecheckParser(@TypeOf(parser));
+
     return struct {
         fn func(str: []const u8) ?Result(ParserResult(@TypeOf(parsers[0]))) {
             inline for (parsers) |p| {
@@ -292,6 +313,7 @@ test "oneOf" {
 /// and converts it to a parser where the result is a string that
 /// contains all characters parsed by `parser`.
 pub fn asStr(comptime parser: anytype) Parser([]const u8) {
+    typecheckParser(@TypeOf(parser));
     return struct {
         const Res = Result([]const u8);
         fn func(str: []const u8) ?Res {
@@ -423,6 +445,7 @@ pub fn map(
     comptime conv: anytype,
     comptime parser: anytype,
 ) Parser(T) {
+    typecheckParser(@TypeOf(parser));
     return struct {
         const Res = Result(T);
         fn func(str: []const u8) ?Res {

@@ -46,8 +46,8 @@ fn readMeStep(b: *Builder) *std.build.Step {
         fn make(step: *std.build.Step) anyerror!void {
             @setEvalBranchQuota(10000);
             const file = try std.fs.cwd().createFile("README.md", .{});
-            const stream = &file.outStream();
-            try stream.print(@embedFile("example/README.md.template"), .{
+            const writer = &file.writer();
+            try writer.print(@embedFile("example/README.md.template"), .{
                 @embedFile("example/rgb.zig"),
             });
         }

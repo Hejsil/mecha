@@ -9,6 +9,7 @@ const testing = std.testing;
 
 pub const ascii = @import("src/ascii.zig");
 pub const utf8 = @import("src/utf8.zig");
+pub const ucd = @import("src/ucd.zig");
 
 /// The result of a successful parse
 pub fn Result(comptime T: type) type {

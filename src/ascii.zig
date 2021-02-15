@@ -49,7 +49,7 @@ test "range" {
 
 /// A parser that succeeds if the string starts with an upper case
 /// character. The parser's result will be the character parsed.
-pub const upper = mecha.oneOf(.{range('A', 'Z')});
+pub const upper = range('A', 'Z');
 
 test "upper" {
     var i: u8 = 0;

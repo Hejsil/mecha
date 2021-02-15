@@ -100,7 +100,7 @@ test "string" {
 }
 
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
-/// The parsers result will be an array of the results from the repeated parser.
+/// The parser's result will be an array of the results from the repeated parser.
 pub fn manyN(
     comptime n: usize,
     comptime parser: anytype,
@@ -124,7 +124,7 @@ pub fn manyN(
 
 /// Construct a parser that repeatedly uses `parser` until it fails
 /// or `m` iterations is reached. The parser constructed will only
-/// succeed if `parser` succeeded at least `n` times. The parsers
+/// succeed if `parser` succeeded at least `n` times. The parser's
 /// result will be a string containing everything parsed.
 pub fn manyRange(
     comptime n: usize,
@@ -149,7 +149,7 @@ pub fn manyRange(
 }
 
 /// Construct a parser that repeatedly uses `parser` until it fails.
-/// The parsers result will be a string containing everything parsed.
+/// The parser's result will be a string containing everything parsed.
 pub fn many(comptime parser: anytype) Parser([]const u8) {
     return manyRange(0, math.maxInt(usize), parser);
 }
@@ -181,7 +181,7 @@ test "many" {
 }
 
 /// Construct a parser that will call `parser` on the string
-/// but never fails to parser. The parsers result will be the
+/// but never fails to parse. The parser's result will be the
 /// result of `parser` on success and `null` on failure.
 pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     return struct {
@@ -463,7 +463,7 @@ fn ToStructResult(comptime T: type) type {
     }.func);
 }
 
-/// Constructs a convert function for `as` that takes a tuple or an array and
+/// Constructs a convert function for `map` that takes a tuple or an array and
 /// converts it into the struct `T`. Fields will be assigned in order,
 /// so `tuple[i]` will be assigned to the ith field of `T`. This function
 /// will give a compile error if `T` and the tuple does not have the same
@@ -475,7 +475,7 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
             const struct_fields = @typeInfo(T).Struct.fields;
             if (struct_fields.len != tuple.len)
                 @compileError(@typeName(T) ++ " and " ++ @typeName(@TypeOf(tuple)) ++ " does not have " ++
-                    "same number of fields. Convertion is not possible.");
+                    "same number of fields. Conversion is not possible.");
 
             var res: T = undefined;
             inline for (struct_fields) |field, i|
@@ -503,7 +503,7 @@ test "map" {
 }
 
 /// Constructs a parser that discards the result returned from the parser
-/// it warps.
+/// it wraps.
 pub fn discard(comptime parser: anytype) Parser(void) {
     return convert(void, struct {
         fn d(_: anytype) ?void {}
@@ -551,7 +551,7 @@ test "int" {
     expectResult(u8, null, parser2("100"));
 }
 
-/// Creates a parser that calls a function to optain its underlying parser.
+/// Creates a parser that calls a function to obtain its underlying parser.
 /// This function introduces the indirection required for recursive grammars.
 /// ```
 /// const digit_10 = discard(digit(10));

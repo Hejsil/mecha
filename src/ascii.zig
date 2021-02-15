@@ -20,7 +20,7 @@ test "char" {
 
 /// Constructs a parser that only succeeds if the string starts with
 /// a codepoint that is in between `start` and `end` inclusively.
-/// The parsers result will be the codepoint parsed.
+/// The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
     return struct {
         const Res = mecha.Result(u8);
@@ -48,7 +48,7 @@ test "range" {
 }
 
 /// A parser that succeeds if the string starts with an upper case
-/// character. The parsers result will be the character parsed.
+/// character. The parser's result will be the character parsed.
 pub const upper = mecha.oneOf(.{range('A', 'Z')});
 
 test "upper" {
@@ -61,9 +61,9 @@ test "upper" {
     }
 }
 
-/// A parser that succeeds if the string starts with an upper case
-/// character. The parsers result will be the character parsed.
-pub const lower = mecha.oneOf(.{range('a', 'z')});
+/// A parser that succeeds if the string starts with a lower case
+/// character. The parser's result will be the character parsed.
+pub const lower = range('a', 'z');
 
 test "lower" {
     var i: u8 = 0;
@@ -76,7 +76,7 @@ test "lower" {
 }
 
 /// A parser that succeeds if the string starts with an alphabetic
-/// character. The parsers result will be the character parsed.
+/// character. The parser's result will be the character parsed.
 pub const alpha = mecha.oneOf(.{ lower, upper });
 
 test "alpha" {
@@ -92,7 +92,7 @@ test "alpha" {
 }
 
 /// Construct a parser that succeeds if the string starts with a
-/// character that is a digit in `base`. The parsers result will be
+/// character that is a digit in `base`. The parser's result will be
 /// the character parsed.
 pub fn digit(comptime base: u8) mecha.Parser(u8) {
     debug.assert(base != 0);
@@ -134,8 +134,8 @@ test "digit" {
     }
 }
 
-/// A parser that succeeds if the string starts with an alphabetic
-/// or numeric character. The parsers result will be the character parsed.
+/// A parser that succeeds if the string starts with an alphabetic or
+/// numeric character. The parser's result will be the character parsed.
 pub const alphanum = mecha.oneOf(.{ alpha, digit(10) });
 
 test "alphanum" {

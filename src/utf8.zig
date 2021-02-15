@@ -4,7 +4,7 @@ const mecha = @import("../mecha.zig");
 const math = std.math;
 const unicode = std.unicode;
 
-// Constructs a parser that only succeeds if the string starts with `c`.
+/// Constructs a parser that only succeeds if the string starts with `c`.
 pub fn char(comptime c: u21) mecha.Parser(void) {
     comptime {
         var array: [4]u8 = undefined;
@@ -25,7 +25,7 @@ test "char" {
 
 /// Constructs a parser that only succeeds if the string starts with
 /// a codepoint that is in between `start` and `end` inclusively.
-/// The parsers result will be the codepoint parsed.
+/// The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
     return struct {
         const Res = mecha.Result(u21);

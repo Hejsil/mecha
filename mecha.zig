@@ -595,3 +595,110 @@ pub fn expectResult(comptime T: type, m_expect: ?Result(T), m_actual: ?Result(T)
         else => testing.expectEqual(expect.value, actual.value),
     }
 }
+
+/// Struct representing an iterator of variables with type T. Backed by a string
+/// and a parser, iterates by calling the parser until parse failure.
+pub fn Iterator(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        parser: Parser(T),
+        str: []const u8,
+        rest: []const u8,
+
+        pub fn init(str: []const u8, parser: Parser(T)) Self {
+            return Self{ .parser = parser, .str = str, .rest = str };
+        }
+
+        /// Get the next element of the Iterator, returns null if empty
+        pub fn next(self: *Self) ?T {
+            const result = self.parser(self.rest) orelse return null;
+            self.rest = result.rest;
+            return result.value;
+        }
+
+        /// Reset the Iterator back to it's initial state
+        pub fn reset(self: *Self) void {
+            self.rest = self.str;
+        }
+
+        /// Extract a slice from the iterator exhausting the iterator.
+        /// Caller owns memory, can fail due to memory allocation issues.
+        pub fn toSlice(self: *Self, allocator: *std.mem.Allocator) ![]T {
+            var list = std.ArrayList(T).init(allocator);
+            errdefer list.deinit();
+            while (self.next()) |item| try list.append(item);
+            return list.toOwnedSlice();
+        }
+    };
+}
+
+test "Iterator" {
+    const parser1 = comptime combine(.{
+        int(isize, 10),
+        discard(many(ascii.space)),
+    });
+
+    var it = Iterator(isize).init("0 123 -45 1", parser1);
+
+    var expected = [_]isize{ 0, 123, -45, 1 };
+
+    expectIterator(isize, &expected, &it);
+    expectIterator(isize, &[_]isize{}, &it);
+    it.reset();
+    var slice = try it.toSlice(testing.allocator);
+    defer testing.allocator.free(slice);
+    testing.expect(std.mem.eql(isize, slice, &expected));
+}
+
+/// Construct a parser that repeatedly uses `parser` until it fails
+/// or `m` iterations is reached. The parser constructed will only
+/// succeed if `parser` succeeded at least `n` times. The parser's
+/// result will be an Iterator containing an entry for every successful
+/// parse
+pub fn manyRangeIterator(
+    comptime n: usize,
+    comptime m: usize,
+    comptime parser: anytype,
+) Parser(Iterator(ParserResult(@TypeOf(parser)))) {
+    return struct {
+        const InnerRes = ParserResult(@TypeOf(parser));
+        const OuterRes = Result(Iterator(InnerRes));
+        fn func(str: []const u8) ?OuterRes {
+            var parse = manyRange(n, m, parser)(str) orelse return null;
+            var it = Iterator(InnerRes).init(parse.value, parser);
+            return OuterRes.init(it, parse.rest);
+        }
+    }.func;
+}
+
+/// Construct a parser that repeatedly uses `parser` until it fails.
+/// The parser's result will be an Iterator containing an entry for
+/// every parse
+pub fn manyIterator(comptime parser: anytype) Parser(Iterator(ParserResult(@TypeOf(parser)))) {
+    return manyRangeIterator(1, std.math.maxInt(usize), parser);
+}
+
+test "Many Iterator" {
+    const parser1: Parser(isize) = comptime combine(.{
+        int(isize, 10),
+        discard(many(ascii.space)),
+    });
+
+    const parser2 = comptime combine(.{
+        ascii.char('['),
+        manyIterator(parser1),
+        ascii.char(']'),
+    });
+
+    expectIterator(isize, &[_]isize{ 0, 123, -45, 1 }, &(parser2("[0 123 -45 1]").?.value));
+}
+
+fn expectIterator(comptime T: type, expect: []const T, actual: *Iterator(T)) void {
+    var i: usize = 0;
+    while (actual.next()) |got| {
+        if (i >= expect.len) std.debug.panic("Iterator has more elements than expected", .{});
+        std.testing.expectEqual(expect[i], got);
+        i += 1;
+    }
+    if (i != expect.len) std.debug.panic("Iterator did not have enough elements.\n Expected: {}\n Got: {}\n", .{ expect.len, i });
+}

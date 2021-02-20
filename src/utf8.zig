@@ -16,11 +16,11 @@ pub fn char(comptime c: u21) mecha.Parser(void) {
 test "char" {
     mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')("a"));
     mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')("aa"));
-    mecha.expectResult(void, null, char('a')("ba"));
-    mecha.expectResult(void, null, char('a')(""));
+    mecha.expectResult(void, error.ParserFailed, char('a')("ba"));
+    mecha.expectResult(void, error.ParserFailed, char('a')(""));
     mecha.expectResult(void, .{ .value = {}, .rest = "ā" }, char(0x100)("Āā"));
-    mecha.expectResult(void, null, char(0x100)(""));
-    mecha.expectResult(void, null, char(0x100)("\xc0"));
+    mecha.expectResult(void, error.ParserFailed, char(0x100)(""));
+    mecha.expectResult(void, error.ParserFailed, char(0x100)("\xc0"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with
@@ -29,24 +29,24 @@ test "char" {
 pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
     return struct {
         const Res = mecha.Result(u21);
-        fn func(str: []const u8) ?Res {
+        fn func(str: []const u8) mecha.Error!Res {
             if (str.len == 0)
-                return null;
+                return error.ParserFailed;
 
             if (end <= math.maxInt(u7)) {
                 switch (str[0]) {
                     start...end => return Res.init(str[0], str[1..]),
-                    else => return null,
+                    else => return error.ParserFailed,
                 }
             } else {
-                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
                 if (cp_len > str.len)
-                    return null;
+                    return error.ParserFailed;
 
-                const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
+                const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
                 switch (cp) {
                     start...end => return Res.init(cp, str[cp_len..]),
-                    else => return null,
+                    else => return error.ParserFailed,
                 }
             }
         }
@@ -60,11 +60,11 @@ test "range" {
     mecha.expectResult(u21, .{ .value = 'a', .rest = "a" }, range('a', 'z')("aa"));
     mecha.expectResult(u21, .{ .value = 'c', .rest = "a" }, range('a', 'z')("ca"));
     mecha.expectResult(u21, .{ .value = 'z', .rest = "a" }, range('a', 'z')("za"));
-    mecha.expectResult(u21, null, range('a', 'z')("1"));
-    mecha.expectResult(u21, null, range('a', 'z')(""));
+    mecha.expectResult(u21, error.ParserFailed, range('a', 'z')("1"));
+    mecha.expectResult(u21, error.ParserFailed, range('a', 'z')(""));
     mecha.expectResult(u21, .{ .value = 0x100, .rest = "ā" }, range(0x100, 0x100)("Āā"));
-    mecha.expectResult(u21, null, range(0x100, 0x100)("aa"));
-    mecha.expectResult(u21, null, range(0x100, 0x100)("\xc0"));
+    mecha.expectResult(u21, error.ParserFailed, range(0x100, 0x100)("aa"));
+    mecha.expectResult(u21, error.ParserFailed, range(0x100, 0x100)("\xc0"));
 }
 
 /// Creates a parser that succeeds and parses one utf8 codepoint if
@@ -72,17 +72,23 @@ test "range" {
 pub fn not(comptime parser: anytype) mecha.Parser(u21) {
     return struct {
         const Res = mecha.Result(u21);
-        fn res(str: []const u8) ?Res {
+        fn res(str: []const u8) mecha.Error!Res {
             if (str.len == 0)
-                return null;
-            if (parser(str)) |_|
-                return null;
+                return error.ParserFailed;
+            if (parser(str)) |_| {
+                return error.ParserFailed;
+            } else |e| {
+                switch (e) {
+                    error.ParserFailed => {},
+                    else => return e,
+                }
+            }
 
-            const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+            const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
             if (cp_len > str.len)
-                return null;
+                return error.ParserFailed;
 
-            const cp = unicode.utf8Decode(str[0..cp_len]) catch return null;
+            const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
             return Res.init(cp, str[cp_len..]);
         }
     }.res;
@@ -94,7 +100,7 @@ test "not" {
     while (i <= math.maxInt(u7)) : (i += 1) {
         const c = @intCast(u8, i);
         switch (c) {
-            'a'...'z' => mecha.expectResult(u21, null, p(&[_]u8{c})),
+            'a'...'z' => mecha.expectResult(u21, error.ParserFailed, p(&[_]u8{c})),
             else => mecha.expectResult(u21, .{ .value = c, .rest = "" }, p(&[_]u8{c})),
         }
     }

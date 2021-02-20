@@ -10,6 +10,11 @@ const testing = std.testing;
 pub const ascii = @import("src/ascii.zig");
 pub const utf8 = @import("src/utf8.zig");
 
+/// All the ways in which a parser can fail.
+/// ParserFailed corresponds to the string not matching the expected form and is
+/// the only one `mecha` intrinsically deals with.
+pub const Error = error{ ParserFailed, OtherError } || mem.Allocator.Error;
+
 /// The result of a successful parse
 pub fn Result(comptime T: type) type {
     return struct {
@@ -26,7 +31,7 @@ pub fn Result(comptime T: type) type {
 
 /// The type of all parser that can work with `mecha`
 pub fn Parser(comptime T: type) type {
-    return fn ([]const u8) ?Result(T);
+    return fn ([]const u8) Error!Result(T);
 }
 
 fn typecheckParser(comptime P: type) void {
@@ -35,7 +40,7 @@ fn typecheckParser(comptime P: type) void {
             const R = func.return_type orelse
                 @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'");
             const T = switch (@typeInfo(R)) {
-                .Optional => |o| o.child.Value,
+                .ErrorUnion => |e| e.payload.Value,
                 else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
             };
             if (P != Parser(T))
@@ -53,24 +58,24 @@ fn ReturnType(comptime P: type) type {
 /// and this function will give you `T`.
 pub fn ParserResult(comptime P: type) type {
     typecheckParser(P);
-    return @typeInfo(ReturnType(P)).Optional.child.Value;
+    return @typeInfo(ReturnType(P)).ErrorUnion.payload.Value;
 }
 
 /// A parser that only succeeds on the end of the string.
-pub fn eos(str: []const u8) ?Result(void) {
+pub fn eos(str: []const u8) Error!Result(void) {
     if (str.len != 0)
-        return null;
+        return error.ParserFailed;
     return Result(void).init({}, str);
 }
 
 test "eos" {
     expectResult(void, .{ .value = {}, .rest = "" }, eos(""));
-    expectResult(void, null, eos("a"));
+    expectResult(void, error.ParserFailed, eos("a"));
 }
 
 /// A parser that always succeeds with the result being the
 /// entire string. The same as the '.*$' regex.
-pub fn rest(str: []const u8) ?Result([]const u8) {
+pub fn rest(str: []const u8) Error!Result([]const u8) {
     return Result([]const u8).init(str, str[str.len..]);
 }
 
@@ -84,9 +89,9 @@ test "rest" {
 pub fn string(comptime str: []const u8) Parser(void) {
     return struct {
         const Res = Result(void);
-        fn func(s: []const u8) ?Res {
+        fn func(s: []const u8) Error!Res {
             if (!mem.startsWith(u8, s, str))
-                return null;
+                return error.ParserFailed;
             return Res.init({}, s[str.len..]);
         }
     }.func;
@@ -95,8 +100,8 @@ pub fn string(comptime str: []const u8) Parser(void) {
 test "string" {
     expectResult(void, .{ .value = {}, .rest = "" }, string("aa")("aa"));
     expectResult(void, .{ .value = {}, .rest = "a" }, string("aa")("aaa"));
-    expectResult(void, null, string("aa")("ba"));
-    expectResult(void, null, string("aa")(""));
+    expectResult(void, error.ParserFailed, string("aa")("ba"));
+    expectResult(void, error.ParserFailed, string("aa")(""));
 }
 
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
@@ -108,11 +113,11 @@ pub fn manyN(
     return struct {
         const Array = [n]ParserResult(@TypeOf(parser));
         const Res = Result(Array);
-        fn func(str: []const u8) ?Res {
+        fn func(str: []const u8) Error!Res {
             var rem = str;
             var res: Array = undefined;
             for (res) |*value| {
-                const r = parser(rem) orelse return null;
+                const r = try parser(rem);
                 rem = r.rest;
                 value.* = r.value;
             }
@@ -134,13 +139,18 @@ pub fn manyRange(
     typecheckParser(@TypeOf(parser));
     return struct {
         const Res = Result([]const u8);
-        fn func(str: []const u8) ?Res {
-            const first_n = manyN(n, parser)(str) orelse return null;
+        fn func(str: []const u8) Error!Res {
+            const first_n = try manyN(n, parser)(str);
             var rem = first_n.rest;
 
             var i: usize = n;
             while (i < m) : (i += 1) {
-                const r = parser(rem) orelse break;
+                const r = parser(rem) catch |e| {
+                    switch (e) {
+                        error.ParserFailed => break,
+                        else => return e,
+                    }
+                };
                 rem = r.rest;
             }
             return Res.init(str[0 .. str.len - rem.len], rem);
@@ -165,8 +175,8 @@ test "many" {
     expectResult([]const u8, .{ .value = "ababab", .rest = "" }, parser1("ababab"));
 
     const parser2 = comptime manyRange(1, 2, string("ab"));
-    expectResult([]const u8, null, parser2(""));
-    expectResult([]const u8, null, parser2("a"));
+    expectResult([]const u8, error.ParserFailed, parser2(""));
+    expectResult([]const u8, error.ParserFailed, parser2("a"));
     expectResult([]const u8, .{ .value = "ab", .rest = "" }, parser2("ab"));
     expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser2("aba"));
     expectResult([]const u8, .{ .value = "abab", .rest = "" }, parser2("abab"));
@@ -186,10 +196,14 @@ test "many" {
 pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     return struct {
         const Res = Result(?ParserResult(@TypeOf(parser)));
-        fn func(str: []const u8) ?Res {
-            if (parser(str)) |r|
-                return Res.init(r.value, r.rest);
-            return Res.init(null, str);
+        fn func(str: []const u8) Error!Res {
+            const r = parser(str) catch |e| {
+                switch (e) {
+                    error.ParserFailed => return Res.init(null, str),
+                    else => return e,
+                }
+            };
+            return Res.init(r.value, r.rest);
         }
     }.func;
 }
@@ -237,14 +251,14 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
     return struct {
         const types = ParsersTypes(parsers);
         const Res = Result(Combine(parsers));
-        fn func(str: []const u8) ?Res {
+        fn func(str: []const u8) Error!Res {
             var res: Res = undefined;
             res.rest = str;
 
             comptime var i = 0;
             comptime var j = 0;
             inline while (i < parsers.len) : (i += 1) {
-                const r = parsers[i](res.rest) orelse return null;
+                const r = try parsers[i](res.rest);
                 res.rest = r.rest;
 
                 if (@TypeOf(r.value) != void) {
@@ -273,7 +287,7 @@ test "combine" {
     expectResult(?u8, .{ .value = 'a', .rest = "" }, parser2("ad"));
     expectResult(?u8, .{ .value = 'a', .rest = "a" }, parser2("ada"));
     expectResult(?u8, .{ .value = null, .rest = "a" }, parser2("da"));
-    expectResult(?u8, null, parser2("qa"));
+    expectResult(?u8, error.ParserFailed, parser2("qa"));
 }
 
 /// Takes a tuple of `Parser(T)` and constructs a parser that
@@ -286,12 +300,18 @@ pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))
         typecheckParser(@TypeOf(parser));
 
     return struct {
-        fn func(str: []const u8) ?Result(ParserResult(@TypeOf(parsers[0]))) {
+        fn func(str: []const u8) Error!Result(ParserResult(@TypeOf(parsers[0]))) {
             inline for (parsers) |p| {
-                if (p(str)) |res|
+                if (p(str)) |res| {
                     return res;
+                } else |e| {
+                    switch (e) {
+                        error.ParserFailed => {},
+                        else => return e,
+                    }
+                }
             }
-            return null;
+            return error.ParserFailed;
         }
     }.func;
 }
@@ -306,7 +326,7 @@ test "oneOf" {
     expectResult(u8, .{ .value = 'b', .rest = "a" }, parser1("ba"));
     expectResult(u8, .{ .value = 'd', .rest = "a" }, parser1("da"));
     expectResult(u8, .{ .value = 'e', .rest = "a" }, parser1("ea"));
-    expectResult(u8, null, parser1("q"));
+    expectResult(u8, error.ParserFailed, parser1("q"));
 }
 
 /// Takes any parser (preferable not of type `Parser([]const u8)`)
@@ -316,8 +336,8 @@ pub fn asStr(comptime parser: anytype) Parser([]const u8) {
     typecheckParser(@TypeOf(parser));
     return struct {
         const Res = Result([]const u8);
-        fn func(str: []const u8) ?Res {
-            const r = parser(str) orelse return null;
+        fn func(str: []const u8) Error!Res {
+            const r = try parser(str);
             return Res.init(str[0 .. str.len - r.rest.len], r.rest);
         }
     }.func;
@@ -327,7 +347,7 @@ test "asStr" {
     const parser1 = comptime asStr(ascii.char('a'));
     expectResult([]const u8, .{ .value = "a", .rest = "" }, parser1("a"));
     expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser1("aa"));
-    expectResult([]const u8, null, parser1("ba"));
+    expectResult([]const u8, error.ParserFailed, parser1("ba"));
 
     const parser2 = comptime asStr(combine(.{ opt(ascii.range('a', 'b')), opt(ascii.range('d', 'e')) }));
     expectResult([]const u8, .{ .value = "ad", .rest = "" }, parser2("ad"));
@@ -347,9 +367,9 @@ pub fn convert(
 ) Parser(T) {
     return struct {
         const Res = Result(T);
-        fn func(str: []const u8) ?Res {
-            const r = parser(str) orelse return null;
-            const v = conv(r.value) orelse return null;
+        fn func(str: []const u8) Error!Res {
+            const r = try parser(str);
+            const v = conv(r.value) orelse return error.ParserFailed;
             return Res.init(v, r.rest);
         }
     }.func;
@@ -409,28 +429,28 @@ test "convert" {
     const parser1 = comptime convert(u8, toInt(u8, 10), asStr(string("123")));
     expectResult(u8, .{ .value = 123, .rest = "" }, parser1("123"));
     expectResult(u8, .{ .value = 123, .rest = "a" }, parser1("123a"));
-    expectResult(u8, null, parser1("12"));
+    expectResult(u8, error.ParserFailed, parser1("12"));
 
     const parser2 = comptime convert(u21, toChar, asStr(string("a")));
     expectResult(u21, .{ .value = 'a', .rest = "" }, parser2("a"));
     expectResult(u21, .{ .value = 'a', .rest = "a" }, parser2("aa"));
-    expectResult(u21, null, parser2("b"));
+    expectResult(u21, error.ParserFailed, parser2("b"));
 
     const parser3 = comptime convert(bool, toBool, rest);
     expectResult(bool, .{ .value = true, .rest = "" }, parser3("true"));
     expectResult(bool, .{ .value = false, .rest = "" }, parser3("false"));
-    expectResult(bool, null, parser3("b"));
+    expectResult(bool, error.ParserFailed, parser3("b"));
 
     const parser4 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
     expectResult(f32, .{ .value = 1.23, .rest = "" }, parser4("1.23"));
     expectResult(f32, .{ .value = 1.23, .rest = "a" }, parser4("1.23a"));
-    expectResult(f32, null, parser4("1.2"));
+    expectResult(f32, error.ParserFailed, parser4("1.2"));
 
     const E = packed enum(u8) { a, b, _ };
     const parser5 = comptime convert(E, toEnum(E), rest);
     expectResult(E, .{ .value = E.a, .rest = "" }, parser5("a"));
     expectResult(E, .{ .value = E.b, .rest = "" }, parser5("b"));
-    expectResult(E, null, parser5("2"));
+    expectResult(E, error.ParserFailed, parser5("2"));
 
     const parser6 = comptime convert(u21, toChar, asStr(string("Āā")));
     expectResult(u21, .{ .value = 0x100, .rest = "" }, parser6("Āā"));
@@ -448,8 +468,8 @@ pub fn map(
     typecheckParser(@TypeOf(parser));
     return struct {
         const Res = Result(T);
-        fn func(str: []const u8) ?Res {
-            const r = parser(str) orelse return null;
+        fn func(str: []const u8) Error!Res {
+            const r = try parser(str);
             return Res.init(conv(r.value), r.rest);
         }
     }.func;
@@ -494,12 +514,12 @@ test "map" {
     const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, 10), ascii.char(' '), int(usize, 10) }));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser1("10 10"));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1("20 20aa"));
-    expectResult(Point, null, parser1("12"));
+    expectResult(Point, error.ParserFailed, parser1("12"));
 
     const parser2 = comptime map(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), ascii.char(' ') })));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser2("10 10 "));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2("20 20 aa"));
-    expectResult(Point, null, parser1("12"));
+    expectResult(Point, error.ParserFailed, parser1("12"));
 }
 
 /// Constructs a parser that discards the result returned from the parser
@@ -539,7 +559,7 @@ test "int" {
     expectResult(u8, .{ .value = 1, .rest = "" }, parser1("1"));
     expectResult(u8, .{ .value = 1, .rest = "a" }, parser1("1a"));
     expectResult(u8, .{ .value = 255, .rest = "" }, parser1("255"));
-    expectResult(u8, null, parser1("256"));
+    expectResult(u8, error.ParserFailed, parser1("256"));
 
     const parser2 = int(u8, 16);
     expectResult(u8, .{ .value = 0x00, .rest = "" }, parser2("0"));
@@ -548,7 +568,7 @@ test "int" {
     expectResult(u8, .{ .value = 0x01, .rest = "g" }, parser2("1g"));
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2("ff"));
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2("FF"));
-    expectResult(u8, null, parser2("100"));
+    expectResult(u8, error.ParserFailed, parser2("100"));
 }
 
 /// Creates a parser that calls a function to obtain its underlying parser.
@@ -564,7 +584,7 @@ pub fn ref(comptime func: anytype) Parser(ParserResult(ReturnType(@TypeOf(func))
     return struct {
         const P = ReturnType(@TypeOf(func));
         const T = ParserResult(P);
-        fn res(str: []const u8) ?Result(T) {
+        fn res(str: []const u8) Error!Result(T) {
             return func()(str);
         }
     }.res;
@@ -581,13 +601,17 @@ test "ref" {
     expectResult(void, .{ .value = {}, .rest = "" }, Scope.digits("0"));
 }
 
-pub fn expectResult(comptime T: type, m_expect: ?Result(T), m_actual: ?Result(T)) void {
-    const expect = m_expect orelse {
-        testing.expectEqual(@as(?Result(T), null), m_actual);
+pub fn expectResult(
+    comptime T: type,
+    m_expect: Error!Result(T),
+    m_actual: Error!Result(T),
+) void {
+    const expect = m_expect catch |err| {
+        testing.expectError(err, m_actual);
         return;
     };
-    testing.expect(m_actual != null);
-    const actual = m_actual.?;
+
+    const actual = m_actual catch |err| std.debug.panic("expected {}, found {} ", .{ expect.value, err });
 
     testing.expectEqualStrings(expect.rest, actual.rest);
     switch (T) {

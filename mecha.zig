@@ -366,8 +366,8 @@ test "asStr" {
 
 /// Constructs a parser that has its result converted with the
 /// `conv` function. The ´conv` functions signature is
-/// `fn (ParserResult(parser)) ?T`. The parser constructed will
-/// fail if `conv` fails.
+/// `fn (*mem.Allocator, ParserResult(parser)) !T`.
+/// The parser constructed will fail if `conv` fails.
 pub fn convert(
     comptime T: type,
     comptime conv: anytype,
@@ -377,7 +377,13 @@ pub fn convert(
         const Res = Result(T);
         fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
             const r = try parser(allocator, str);
-            const v = conv(r.value) orelse return error.ParserFailed;
+            const v = conv(allocator, r.value) catch |e| {
+                switch (@as(anyerror, e)) {
+                    error.ParserFailed => return error.ParserFailed,
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => return error.OtherError,
+                }
+            };
             return Res.init(v, r.rest);
         }
     }.func;
@@ -385,42 +391,42 @@ pub fn convert(
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to an int of type `Int`.
-pub fn toInt(comptime Int: type, comptime base: u8) fn ([]const u8) ?Int {
+pub fn toInt(comptime Int: type, comptime base: u8) fn (*mem.Allocator, []const u8) Error!Int {
     return struct {
-        fn func(str: []const u8) ?Int {
-            return fmt.parseInt(Int, str, base) catch return null;
+        fn func(_: *mem.Allocator, str: []const u8) Error!Int {
+            return fmt.parseInt(Int, str, base) catch error.ParserFailed;
         }
     }.func;
 }
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to a float of type `Float`.
-pub fn toFloat(comptime Float: type) fn ([]const u8) ?Float {
+pub fn toFloat(comptime Float: type) fn (*mem.Allocator, []const u8) Error!Float {
     return struct {
-        fn func(str: []const u8) ?Float {
-            return fmt.parseFloat(Float, str) catch return null;
+        fn func(_: *mem.Allocator, str: []const u8) Error!Float {
+            return fmt.parseFloat(Float, str) catch error.ParserFailed;
         }
     }.func;
 }
 
 /// A convert function for `convert` that takes a string and
 /// returns the first codepoint.
-pub fn toChar(str: []const u8) ?u21 {
+pub fn toChar(_: *mem.Allocator, str: []const u8) anyerror!u21 {
     if (str.len > 1) {
-        const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return null;
+        const cp_len = try unicode.utf8ByteSequenceLength(str[0]);
         if (cp_len > str.len)
-            return null;
-        return unicode.utf8Decode(str[0..cp_len]) catch null;
+            return error.ParserFailed;
+        return unicode.utf8Decode(str[0..cp_len]);
     }
     return @as(u21, str[0]);
 }
 
 /// Constructs a convert function for `convert` that takes a
 /// string and converts it to an `Enum` with `std.meta.stringToEnum`.
-pub fn toEnum(comptime Enum: type) fn ([]const u8) ?Enum {
+pub fn toEnum(comptime Enum: type) fn (*mem.Allocator, []const u8) Error!Enum {
     return struct {
-        fn func(str: []const u8) ?Enum {
-            return std.meta.stringToEnum(Enum, str);
+        fn func(_: *mem.Allocator, str: []const u8) Error!Enum {
+            return std.meta.stringToEnum(Enum, str) orelse error.ParserFailed;
         }
     }.func;
 }
@@ -428,8 +434,8 @@ pub fn toEnum(comptime Enum: type) fn ([]const u8) ?Enum {
 /// A convert function for `convert` that takes a string
 /// and returns `true` if it is `"true"` and `false` if it
 /// is `"false"`.
-pub fn toBool(str: []const u8) ?bool {
-    const r = toEnum(enum { @"false", @"true" })(str) orelse return null;
+pub fn toBool(allocator: *mem.Allocator, str: []const u8) Error!bool {
+    const r = try toEnum(enum { @"false", @"true" })(allocator, str);
     return r == .@"true";
 }
 
@@ -535,8 +541,8 @@ test "map" {
 /// Constructs a parser that discards the result returned from the parser
 /// it wraps.
 pub fn discard(comptime parser: anytype) Parser(void) {
-    return convert(void, struct {
-        fn d(_: anytype) ?void {}
+    return map(void, struct {
+        fn d(_: anytype) void {}
     }.d, parser);
 }
 

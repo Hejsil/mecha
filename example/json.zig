@@ -115,21 +115,21 @@ const ws = discard(many(oneOf(.{
 })));
 
 fn ok(comptime s: []const u8) void {
-    const res = json(s) catch @panic("test failure");
+    const res = json(testing.allocator, s) catch @panic("test failure");
     testing.expectEqualStrings("", res.rest);
 }
 
 fn err(comptime s: []const u8) void {
-    testing.expectError(error.ParserFailed, json(s));
+    testing.expectError(error.ParserFailed, json(testing.allocator, s));
 }
 
 fn errNotAllParsed(comptime s: []const u8) void {
-    const res = json(s) catch @panic("test failure");
+    const res = json(testing.allocator, s) catch @panic("test failure");
     testing.expect(res.rest.len != 0);
 }
 
 fn any(comptime s: []const u8) void {
-    _ = json(s) catch {};
+    _ = json(testing.allocator, s) catch {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

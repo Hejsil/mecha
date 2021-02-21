@@ -247,14 +247,13 @@ pub fn not(comptime parser: anytype) mecha.Parser(u8) {
         fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
-            if (parser(allocator, str)) |_| {
-                return error.ParserFailed;
-            } else |e| {
-                switch (e) {
-                    error.ParserFailed => return Res.init(str[0], str[1..]),
-                    else => return e,
-                }
-            }
+
+            _ = parser(allocator, str) catch |e| switch (e) {
+                error.ParserFailed => return Res.init(str[0], str[1..]),
+                else => return e,
+            };
+
+            return error.ParserFailed;
         }
     }.res;
 }

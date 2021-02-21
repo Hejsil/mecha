@@ -148,11 +148,9 @@ pub fn manyRange(
 
             var i: usize = n;
             while (i < m) : (i += 1) {
-                const r = parser(allocator, rem) catch |e| {
-                    switch (e) {
-                        error.ParserFailed => break,
-                        else => return e,
-                    }
+                const r = parser(allocator, rem) catch |e| switch (e) {
+                    error.ParserFailed => break,
+                    else => return e,
                 };
                 rem = r.rest;
             }
@@ -201,11 +199,9 @@ pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     return struct {
         const Res = Result(?ParserResult(@TypeOf(parser)));
         fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
-            const r = parser(allocator, str) catch |e| {
-                switch (e) {
-                    error.ParserFailed => return Res.init(null, str),
-                    else => return e,
-                }
+            const r = parser(allocator, str) catch |e| switch (e) {
+                error.ParserFailed => return Res.init(null, str),
+                else => return e,
             };
             return Res.init(r.value, r.rest);
         }
@@ -377,12 +373,10 @@ pub fn convert(
         const Res = Result(T);
         fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
             const r = try parser(allocator, str);
-            const v = conv(allocator, r.value) catch |e| {
-                switch (@as(anyerror, e)) {
-                    error.ParserFailed => return error.ParserFailed,
-                    error.OutOfMemory => return error.OutOfMemory,
-                    else => return error.OtherError,
-                }
+            const v = conv(allocator, r.value) catch |e| switch (@as(anyerror, e)) {
+                error.ParserFailed => return error.ParserFailed,
+                error.OutOfMemory => return error.OutOfMemory,
+                else => return error.OtherError,
             };
             return Res.init(v, r.rest);
         }

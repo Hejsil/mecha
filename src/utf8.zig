@@ -80,11 +80,9 @@ pub fn not(comptime parser: anytype) mecha.Parser(u21) {
                 return error.ParserFailed;
             if (parser(allocator, str)) |_| {
                 return error.ParserFailed;
-            } else |e| {
-                switch (e) {
-                    error.ParserFailed => {},
-                    else => return e,
-                }
+            } else |e| switch (e) {
+                error.ParserFailed => {},
+                else => return e,
             }
 
             const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;

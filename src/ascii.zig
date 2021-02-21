@@ -4,7 +4,8 @@ const mecha = @import("../mecha.zig");
 const debug = std.debug;
 const math = std.math;
 const mem = std.mem;
-
+const testing = std.testing;
+///
 /// Constructs a parser that only succeeds if the string starts with `i`.
 pub fn char(comptime i: u8) mecha.Parser(void) {
     comptime {
@@ -13,7 +14,7 @@ pub fn char(comptime i: u8) mecha.Parser(void) {
 }
 
 test "char" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')(allocator, "a"));
     mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')(allocator, "aa"));
     mecha.expectResult(void, error.ParserFailed, char('a')(allocator, "ba"));
@@ -39,7 +40,7 @@ pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
 }
 
 test "range" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     mecha.expectResult(u8, .{ .value = 'a', .rest = "" }, range('a', 'z')(allocator, "a"));
     mecha.expectResult(u8, .{ .value = 'i', .rest = "" }, range('a', 'z')(allocator, "i"));
     mecha.expectResult(u8, .{ .value = 'z', .rest = "" }, range('a', 'z')(allocator, "z"));
@@ -55,7 +56,7 @@ test "range" {
 pub const upper = range('A', 'Z');
 
 test "upper" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -70,7 +71,7 @@ test "upper" {
 pub const lower = range('a', 'z');
 
 test "lower" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -85,7 +86,7 @@ test "lower" {
 pub const alpha = mecha.oneOf(.{ lower, upper });
 
 test "alpha" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -112,7 +113,7 @@ pub fn digit(comptime base: u8) mecha.Parser(u8) {
 }
 
 test "digit" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     i = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
@@ -146,7 +147,7 @@ test "digit" {
 pub const alphanum = mecha.oneOf(.{ alpha, digit(10) });
 
 test "alphanum" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -165,7 +166,7 @@ pub const cntrl = mecha.oneOf(.{
 });
 
 test "cntrl" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -178,7 +179,7 @@ test "cntrl" {
 pub const graph = range(0x21, 0x7e);
 
 test "graph" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -191,7 +192,7 @@ test "graph" {
 pub const print = range(0x20, 0x7e);
 
 test "print" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -207,7 +208,7 @@ pub const space = mecha.oneOf(.{
 });
 
 test "print" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -225,7 +226,7 @@ pub const punct = mecha.oneOf(.{
 });
 
 test "punct" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -259,7 +260,7 @@ pub fn not(comptime parser: anytype) mecha.Parser(u8) {
 }
 
 test "not" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     const p = not(alpha);
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
@@ -270,8 +271,4 @@ test "not" {
             else => mecha.expectResult(u8, .{ .value = i, .rest = "" }, p(allocator, &[_]u8{i})),
         }
     }
-}
-
-fn failingAllocator() mem.Allocator {
-    return std.testing.FailingAllocator.init(std.testing.allocator, 0).allocator;
 }

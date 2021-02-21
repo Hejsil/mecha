@@ -1,8 +1,9 @@
 const std = @import("std");
 const mecha = @import("../mecha.zig");
 
-const mem = std.mem;
 const math = std.math;
+const mem = std.mem;
+const testing = std.testing;
 const unicode = std.unicode;
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
@@ -15,7 +16,7 @@ pub fn char(comptime c: u21) mecha.Parser(void) {
 }
 
 test "char" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')(allocator, "a"));
     mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')(allocator, "aa"));
     mecha.expectResult(void, error.ParserFailed, char('a')(allocator, "ba"));
@@ -56,7 +57,7 @@ pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
 }
 
 test "range" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     mecha.expectResult(u21, .{ .value = 'a', .rest = "" }, range('a', 'z')(allocator, "a"));
     mecha.expectResult(u21, .{ .value = 'c', .rest = "" }, range('a', 'z')(allocator, "c"));
     mecha.expectResult(u21, .{ .value = 'z', .rest = "" }, range('a', 'z')(allocator, "z"));
@@ -96,7 +97,7 @@ pub fn not(comptime parser: anytype) mecha.Parser(u21) {
 }
 
 test "not" {
-    var allocator = &failingAllocator();
+    var allocator = testing.failing_allocator;
     const p = not(comptime range('a', 'z'));
     var i: u16 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
@@ -106,8 +107,4 @@ test "not" {
             else => mecha.expectResult(u21, .{ .value = c, .rest = "" }, p(allocator, &[_]u8{c})),
         }
     }
-}
-
-fn failingAllocator() mem.Allocator {
-    return std.testing.FailingAllocator.init(std.testing.allocator, 0).allocator;
 }

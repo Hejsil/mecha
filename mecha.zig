@@ -69,7 +69,7 @@ pub fn eos(_: *mem.Allocator, str: []const u8) Error!Result(void) {
 }
 
 test "eos" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     expectResult(void, .{ .value = {}, .rest = "" }, eos(allocator, ""));
     expectResult(void, error.ParserFailed, eos(allocator, "a"));
 }
@@ -81,7 +81,7 @@ pub fn rest(_: *mem.Allocator, str: []const u8) Error!Result([]const u8) {
 }
 
 test "rest" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     expectResult([]const u8, .{ .value = "", .rest = "" }, rest(allocator, ""));
     expectResult([]const u8, .{ .value = "a", .rest = "" }, rest(allocator, "a"));
 }
@@ -100,7 +100,7 @@ pub fn string(comptime str: []const u8) Parser(void) {
 }
 
 test "string" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     expectResult(void, .{ .value = {}, .rest = "" }, string("aa")(allocator, "aa"));
     expectResult(void, .{ .value = {}, .rest = "a" }, string("aa")(allocator, "aaa"));
     expectResult(void, error.ParserFailed, string("aa")(allocator, "ba"));
@@ -166,7 +166,7 @@ pub fn many(comptime parser: anytype) Parser([]const u8) {
 }
 
 test "many" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = comptime many(string("ab"));
     expectResult([]const u8, .{ .value = "", .rest = "" }, parser1(allocator, ""));
     expectResult([]const u8, .{ .value = "", .rest = "a" }, parser1(allocator, "a"));
@@ -209,7 +209,7 @@ pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
 }
 
 test "opt" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = comptime opt(ascii.range('a', 'z'));
     expectResult(?u8, .{ .value = 'a', .rest = "" }, parser1(allocator, "a"));
     expectResult(?u8, .{ .value = 'a', .rest = "a" }, parser1(allocator, "aa"));
@@ -277,7 +277,7 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
 }
 
 test "combine" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = comptime combine(.{ opt(ascii.range('a', 'b')), opt(ascii.range('d', 'e')) });
     const Res = ParserResult(@TypeOf(parser1));
     expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' }, .rest = "" }, parser1(allocator, "ad"));
@@ -319,7 +319,7 @@ pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))
 }
 
 test "oneOf" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = comptime oneOf(.{ ascii.range('a', 'b'), ascii.range('d', 'e') });
     expectResult(u8, .{ .value = 'a', .rest = "" }, parser1(allocator, "a"));
     expectResult(u8, .{ .value = 'b', .rest = "" }, parser1(allocator, "b"));
@@ -347,7 +347,7 @@ pub fn asStr(comptime parser: anytype) Parser([]const u8) {
 }
 
 test "asStr" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = comptime asStr(ascii.char('a'));
     expectResult([]const u8, .{ .value = "a", .rest = "" }, parser1(allocator, "a"));
     expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser1(allocator, "aa"));
@@ -434,7 +434,7 @@ pub fn toBool(allocator: *mem.Allocator, str: []const u8) Error!bool {
 }
 
 test "convert" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = comptime convert(u8, toInt(u8, 10), asStr(string("123")));
     expectResult(u8, .{ .value = 123, .rest = "" }, parser1(allocator, "123"));
     expectResult(u8, .{ .value = 123, .rest = "a" }, parser1(allocator, "123a"));
@@ -516,7 +516,7 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
 }
 
 test "map" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const Point = struct {
         x: usize,
         y: usize,
@@ -541,7 +541,7 @@ pub fn discard(comptime parser: anytype) Parser(void) {
 }
 
 test "discard" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser = comptime discard(many(ascii.char(' ')));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(allocator, "abc"));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(allocator, " abc"));
@@ -565,7 +565,7 @@ pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
 }
 
 test "int" {
-    var allocator = testing.failing_allocator;
+    const allocator = testing.failing_allocator;
     const parser1 = int(u8, 10);
     expectResult(u8, .{ .value = 0, .rest = "" }, parser1(allocator, "0"));
     expectResult(u8, .{ .value = 1, .rest = "" }, parser1(allocator, "1"));

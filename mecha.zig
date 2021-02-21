@@ -410,7 +410,7 @@ pub fn toChar(_: *mem.Allocator, str: []const u8) anyerror!u21 {
         const cp_len = try unicode.utf8ByteSequenceLength(str[0]);
         if (cp_len > str.len)
             return error.ParserFailed;
-        return unicode.utf8Decode(str[0..cp_len]);
+        return unicode.utf8Decode(str[0..cp_len]) catch error.ParserFailed;
     }
     return @as(u21, str[0]);
 }

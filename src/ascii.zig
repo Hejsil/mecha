@@ -1,5 +1,5 @@
-const std = @import("std");
 const mecha = @import("../mecha.zig");
+const std = @import("std");
 
 const debug = std.debug;
 const math = std.math;
@@ -25,14 +25,14 @@ test "char" {
 /// a codepoint that is in between `start` and `end` inclusively.
 /// The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
+    const Res = mecha.Result(u8);
     return struct {
-        const Res = mecha.Result(u8);
         fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
 
             switch (str[0]) {
-                start...end => return Res.init(str[0], str[1..]),
+                start...end => return Res{ .value = str[0], .rest = str[1..] },
                 else => return error.ParserFailed,
             }
         }
@@ -243,14 +243,14 @@ test "punct" {
 /// Creates a parser that succeeds and parses one ascii character if
 /// `parser` fails to parse the input string.
 pub fn not(comptime parser: anytype) mecha.Parser(u8) {
+    const Res = mecha.Result(u8);
     return struct {
-        const Res = mecha.Result(u8);
         fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
 
             _ = parser(allocator, str) catch |e| switch (e) {
-                error.ParserFailed => return Res.init(str[0], str[1..]),
+                error.ParserFailed => return Res{ .value = str[0], .rest = str[1..] },
                 else => return e,
             };
 

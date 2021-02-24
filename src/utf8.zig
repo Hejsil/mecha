@@ -1,5 +1,5 @@
-const std = @import("std");
 const mecha = @import("../mecha.zig");
+const std = @import("std");
 
 const math = std.math;
 const mem = std.mem;
@@ -30,15 +30,15 @@ test "char" {
 /// a codepoint that is in between `start` and `end` inclusively.
 /// The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
+    const Res = mecha.Result(u21);
     return struct {
-        const Res = mecha.Result(u21);
         fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
 
             if (end <= math.maxInt(u7)) {
                 switch (str[0]) {
-                    start...end => return Res.init(str[0], str[1..]),
+                    start...end => return Res{ .value = str[0], .rest = str[1..] },
                     else => return error.ParserFailed,
                 }
             } else {
@@ -48,7 +48,7 @@ pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
 
                 const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
                 switch (cp) {
-                    start...end => return Res.init(cp, str[cp_len..]),
+                    start...end => return Res{ .value = cp, .rest = str[cp_len..] },
                     else => return error.ParserFailed,
                 }
             }
@@ -74,8 +74,8 @@ test "range" {
 /// Creates a parser that succeeds and parses one utf8 codepoint if
 /// `parser` fails to parse the input string.
 pub fn not(comptime parser: anytype) mecha.Parser(u21) {
+    const Res = mecha.Result(u21);
     return struct {
-        const Res = mecha.Result(u21);
         fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
@@ -91,7 +91,7 @@ pub fn not(comptime parser: anytype) mecha.Parser(u21) {
                 return error.ParserFailed;
 
             const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
-            return Res.init(cp, str[cp_len..]);
+            return Res{ .value = cp, .rest = str[cp_len..] };
         }
     }.res;
 }

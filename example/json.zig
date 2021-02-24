@@ -1,8 +1,8 @@
 const std = @import("std");
 usingnamespace @import("mecha");
 
-const testing = std.testing;
 const builtin = std.builtin;
+const testing = std.testing;
 
 const json = combine(.{ ws, element });
 
@@ -26,26 +26,26 @@ const elements = combine(.{
     discard(many(combine(.{ comma, element }))),
 });
 
-const member = combine(.{ jstring, colon, element });
-const object = combine(.{ lcurly, discard(opt(members)), rcurly });
 const array = combine(.{ lbracket, discard(opt(elements)), rbracket });
 const element = ref(valueRef);
+const member = combine(.{ jstring, colon, element });
+const object = combine(.{ lcurly, discard(opt(members)), rcurly });
 
 fn valueRef() Parser(void) {
     return value;
 }
 
-const number = token(combine(.{ integer, fraction, exponent }));
-const jstring = token(combine(.{ utf8.char('"'), chars, utf8.char('"') }));
-const jtrue = token(string("true"));
-const jfalse = token(string("false"));
-const jnull = token(string("null"));
-const lcurly = token(utf8.char('{'));
-const rcurly = token(utf8.char('}'));
-const lbracket = token(utf8.char('['));
-const rbracket = token(utf8.char(']'));
 const colon = token(utf8.char(':'));
 const comma = token(utf8.char(','));
+const jfalse = token(string("false"));
+const jnull = token(string("null"));
+const jstring = token(combine(.{ utf8.char('"'), chars, utf8.char('"') }));
+const jtrue = token(string("true"));
+const lbracket = token(utf8.char('['));
+const lcurly = token(utf8.char('{'));
+const number = token(combine(.{ integer, fraction, exponent }));
+const rbracket = token(utf8.char(']'));
+const rcurly = token(utf8.char('}'));
 
 fn token(comptime parser: anytype) Parser(void) {
     return combine(.{ discard(parser), ws });
@@ -114,21 +114,21 @@ const ws = discard(many(oneOf(.{
     utf8.char(0x0009),
 })));
 
-fn ok(comptime s: []const u8) void {
+fn ok(s: []const u8) void {
     const res = json(testing.allocator, s) catch @panic("test failure");
     testing.expectEqualStrings("", res.rest);
 }
 
-fn err(comptime s: []const u8) void {
+fn err(s: []const u8) void {
     testing.expectError(error.ParserFailed, json(testing.allocator, s));
 }
 
-fn errNotAllParsed(comptime s: []const u8) void {
+fn errNotAllParsed(s: []const u8) void {
     const res = json(testing.allocator, s) catch @panic("test failure");
     testing.expect(res.rest.len != 0);
 }
 
-fn any(comptime s: []const u8) void {
+fn any(s: []const u8) void {
     _ = json(testing.allocator, s) catch {};
 }
 

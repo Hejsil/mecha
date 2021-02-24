@@ -37,12 +37,13 @@ const rgb = combine(.{
 });
 
 test "rgb" {
-    const a = rgb("#aabbcc").?.value;
+    const allocator = std.testing.allocator;
+    const a = (try rgb(allocator, "#aabbcc")).value;
     std.testing.expectEqual(@as(u8, 0xaa), a.r);
     std.testing.expectEqual(@as(u8, 0xbb), a.g);
     std.testing.expectEqual(@as(u8, 0xcc), a.b);
 
-    const b = rgb("#abc").?.value;
+    const b = (try rgb(allocator, "#abc")).value;
     std.testing.expectEqual(@as(u8, 0xaa), b.r);
     std.testing.expectEqual(@as(u8, 0xbb), b.g);
     std.testing.expectEqual(@as(u8, 0xcc), b.b);

@@ -3,6 +3,8 @@ const mecha = @import("../mecha.zig");
 
 const debug = std.debug;
 const math = std.math;
+const mem = std.mem;
+const testing = std.testing;
 
 /// Constructs a parser that only succeeds if the string starts with `i`.
 pub fn char(comptime i: u8) mecha.Parser(void) {
@@ -12,10 +14,11 @@ pub fn char(comptime i: u8) mecha.Parser(void) {
 }
 
 test "char" {
-    mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')("a"));
-    mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')("aa"));
-    mecha.expectResult(void, null, char('a')("ba"));
-    mecha.expectResult(void, null, char('a')(""));
+    const allocator = testing.failing_allocator;
+    mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')(allocator, "a"));
+    mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')(allocator, "aa"));
+    mecha.expectResult(void, error.ParserFailed, char('a')(allocator, "ba"));
+    mecha.expectResult(void, error.ParserFailed, char('a')(allocator, ""));
 }
 
 /// Constructs a parser that only succeeds if the string starts with
@@ -24,27 +27,28 @@ test "char" {
 pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
     return struct {
         const Res = mecha.Result(u8);
-        fn func(str: []const u8) ?Res {
+        fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
-                return null;
+                return error.ParserFailed;
 
             switch (str[0]) {
                 start...end => return Res.init(str[0], str[1..]),
-                else => return null,
+                else => return error.ParserFailed,
             }
         }
     }.func;
 }
 
 test "range" {
-    mecha.expectResult(u8, .{ .value = 'a', .rest = "" }, range('a', 'z')("a"));
-    mecha.expectResult(u8, .{ .value = 'i', .rest = "" }, range('a', 'z')("i"));
-    mecha.expectResult(u8, .{ .value = 'z', .rest = "" }, range('a', 'z')("z"));
-    mecha.expectResult(u8, .{ .value = 'a', .rest = "a" }, range('a', 'z')("aa"));
-    mecha.expectResult(u8, .{ .value = 'c', .rest = "a" }, range('a', 'z')("ca"));
-    mecha.expectResult(u8, .{ .value = 'z', .rest = "a" }, range('a', 'z')("za"));
-    mecha.expectResult(u8, null, range('a', 'z')("1"));
-    mecha.expectResult(u8, null, range('a', 'z')(""));
+    const allocator = testing.failing_allocator;
+    mecha.expectResult(u8, .{ .value = 'a', .rest = "" }, range('a', 'z')(allocator, "a"));
+    mecha.expectResult(u8, .{ .value = 'i', .rest = "" }, range('a', 'z')(allocator, "i"));
+    mecha.expectResult(u8, .{ .value = 'z', .rest = "" }, range('a', 'z')(allocator, "z"));
+    mecha.expectResult(u8, .{ .value = 'a', .rest = "a" }, range('a', 'z')(allocator, "aa"));
+    mecha.expectResult(u8, .{ .value = 'c', .rest = "a" }, range('a', 'z')(allocator, "ca"));
+    mecha.expectResult(u8, .{ .value = 'z', .rest = "a" }, range('a', 'z')(allocator, "za"));
+    mecha.expectResult(u8, error.ParserFailed, range('a', 'z')(allocator, "1"));
+    mecha.expectResult(u8, error.ParserFailed, range('a', 'z')(allocator, ""));
 }
 
 /// A parser that succeeds if the string starts with an upper case
@@ -52,11 +56,12 @@ test "range" {
 pub const upper = range('A', 'Z');
 
 test "upper" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            'A'...'Z' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, upper(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, upper(&[_]u8{i})),
+            'A'...'Z' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, upper(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, upper(allocator, &[_]u8{i})),
         }
     }
 }
@@ -66,11 +71,12 @@ test "upper" {
 pub const lower = range('a', 'z');
 
 test "lower" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            'a'...'z' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, lower(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, lower(&[_]u8{i})),
+            'a'...'z' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, lower(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, lower(allocator, &[_]u8{i})),
         }
     }
 }
@@ -80,13 +86,14 @@ test "lower" {
 pub const alpha = mecha.oneOf(.{ lower, upper });
 
 test "alpha" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
             'a'...'z',
             'A'...'Z',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, alpha(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, alpha(&[_]u8{i})),
+            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, alpha(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, alpha(allocator, &[_]u8{i})),
         }
     }
 }
@@ -106,20 +113,21 @@ pub fn digit(comptime base: u8) mecha.Parser(u8) {
 }
 
 test "digit" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     i = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            '0'...'1' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(2)(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, digit(2)(&[_]u8{i})),
+            '0'...'1' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(2)(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, digit(2)(allocator, &[_]u8{i})),
         }
     }
 
     i = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            '0'...'9' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(10)(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, digit(10)(&[_]u8{i})),
+            '0'...'9' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(10)(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, digit(10)(allocator, &[_]u8{i})),
         }
     }
     i = 0;
@@ -128,8 +136,8 @@ test "digit" {
             '0'...'9',
             'a'...'f',
             'A'...'F',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(16)(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, digit(16)(&[_]u8{i})),
+            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(16)(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, digit(16)(allocator, &[_]u8{i})),
         }
     }
 }
@@ -139,14 +147,15 @@ test "digit" {
 pub const alphanum = mecha.oneOf(.{ alpha, digit(10) });
 
 test "alphanum" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
             'a'...'z',
             'A'...'Z',
             '0'...'9',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, alphanum(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, alphanum(&[_]u8{i})),
+            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, alphanum(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, alphanum(allocator, &[_]u8{i})),
         }
     }
 }
@@ -157,11 +166,12 @@ pub const cntrl = mecha.oneOf(.{
 });
 
 test "cntrl" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            0...0x19, 127 => mecha.expectResult(u8, .{ .value = i, .rest = "" }, cntrl(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, cntrl(&[_]u8{i})),
+            0...0x19, 127 => mecha.expectResult(u8, .{ .value = i, .rest = "" }, cntrl(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, cntrl(allocator, &[_]u8{i})),
         }
     }
 }
@@ -169,11 +179,12 @@ test "cntrl" {
 pub const graph = range(0x21, 0x7e);
 
 test "graph" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            0x21...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, graph(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, graph(&[_]u8{i})),
+            0x21...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, graph(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, graph(allocator, &[_]u8{i})),
         }
     }
 }
@@ -181,11 +192,12 @@ test "graph" {
 pub const print = range(0x20, 0x7e);
 
 test "print" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, print(&[_]u8{i})),
+            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, print(allocator, &[_]u8{i})),
         }
     }
 }
@@ -196,11 +208,12 @@ pub const space = mecha.oneOf(.{
 });
 
 test "print" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, print(&[_]u8{i})),
+            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, print(allocator, &[_]u8{i})),
         }
     }
 }
@@ -213,6 +226,7 @@ pub const punct = mecha.oneOf(.{
 });
 
 test "punct" {
+    const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
@@ -220,8 +234,8 @@ test "punct" {
             ':'...'@',
             '['...'`',
             '{'...'~',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, punct(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, punct(&[_]u8{i})),
+            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, punct(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, punct(allocator, &[_]u8{i})),
         }
     }
 }
@@ -231,25 +245,30 @@ test "punct" {
 pub fn not(comptime parser: anytype) mecha.Parser(u8) {
     return struct {
         const Res = mecha.Result(u8);
-        fn res(str: []const u8) ?Res {
+        fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
-                return null;
-            if (parser(str)) |_|
-                return null;
-            return Res.init(str[0], str[1..]);
+                return error.ParserFailed;
+
+            _ = parser(allocator, str) catch |e| switch (e) {
+                error.ParserFailed => return Res.init(str[0], str[1..]),
+                else => return e,
+            };
+
+            return error.ParserFailed;
         }
     }.res;
 }
 
 test "not" {
+    const allocator = testing.failing_allocator;
     const p = not(alpha);
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
             'a'...'z',
             'A'...'Z',
-            => mecha.expectResult(u8, null, p(&[_]u8{i})),
-            else => mecha.expectResult(u8, .{ .value = i, .rest = "" }, p(&[_]u8{i})),
+            => mecha.expectResult(u8, error.ParserFailed, p(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, .{ .value = i, .rest = "" }, p(allocator, &[_]u8{i})),
         }
     }
 }

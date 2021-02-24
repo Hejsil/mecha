@@ -189,11 +189,10 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
 
     return struct {
         fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
-            var res = if (options.collect) std.ArrayList(Element).init(allocator) else {};
+            var res = if (options.collect)
+                try std.ArrayList(Element).initCapacity(allocator, options.min)
+            else {};
             errdefer if (options.collect) res.deinit();
-
-            if (options.collect)
-                try res.ensureCapacity(options.min);
 
             var rem = str;
             var i: usize = 0;

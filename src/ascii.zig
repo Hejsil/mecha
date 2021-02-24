@@ -207,13 +207,13 @@ pub const space = mecha.oneOf(.{
     range('\t', 0x0c),
 });
 
-test "print" {
+test "space" {
     const allocator = testing.failing_allocator;
     var i: u8 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
         switch (i) {
-            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(allocator, &[_]u8{i})),
-            else => mecha.expectResult(u8, error.ParserFailed, print(allocator, &[_]u8{i})),
+            '\t'...0x0c, ' ' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, space(allocator, &[_]u8{i})),
+            else => mecha.expectResult(u8, error.ParserFailed, space(allocator, &[_]u8{i})),
         }
     }
 }

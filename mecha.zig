@@ -15,6 +15,8 @@ pub const utf8 = @import("src/utf8.zig");
 /// the only one `mecha` intrinsically deals with.
 pub const Error = error{ ParserFailed, OtherError } || mem.Allocator.Error;
 
+pub const Void = Result(void);
+
 /// The result of a successful parse
 pub fn Result(comptime T: type) type {
     return struct {
@@ -57,11 +59,17 @@ pub fn ParserResult(comptime P: type) type {
     return @typeInfo(ReturnType(P)).ErrorUnion.payload.Value;
 }
 
+/// A parser that always succeeds and parses nothing. This parser
+/// is only really useful for generic code. See `many`.
+pub fn noop(_: *mem.Allocator, str: []const u8) Error!Void {
+    return Void{ .value = {}, .rest = str };
+}
+
 /// A parser that only succeeds on the end of the string.
-pub fn eos(_: *mem.Allocator, str: []const u8) Error!Result(void) {
+pub fn eos(_: *mem.Allocator, str: []const u8) Error!Void {
     if (str.len != 0)
         return error.ParserFailed;
-    return Result(void){ .value = {}, .rest = str };
+    return Void{ .value = {}, .rest = str };
 }
 
 test "eos" {
@@ -85,12 +93,11 @@ test "rest" {
 /// Construct a parser that succeeds if the string passed in starts
 /// with `str`.
 pub fn string(comptime str: []const u8) Parser(void) {
-    const Res = Result(void);
     return struct {
-        fn func(_: *mem.Allocator, s: []const u8) Error!Res {
+        fn func(_: *mem.Allocator, s: []const u8) Error!Void {
             if (!mem.startsWith(u8, s, str))
                 return error.ParserFailed;
-            return Res{ .value = {}, .rest = s[str.len..] };
+            return Void{ .value = {}, .rest = s[str.len..] };
         }
     }.func;
 }
@@ -103,11 +110,18 @@ test "string" {
     expectResult(void, error.ParserFailed, string("aa")(allocator, ""));
 }
 
+pub const ManyNOptions = struct {
+    /// A parser used to parse the content between each element `manyN` parses.
+    /// The default is `noop`, so each element will be parsed one after another.
+    separator: Parser(void) = noop,
+};
+
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
 /// The parser's result will be an array of the results from the repeated parser.
 pub fn manyN(
-    comptime n: usize,
     comptime parser: anytype,
+    comptime n: usize,
+    comptime options: ManyNOptions,
 ) Parser([n]ParserResult(@TypeOf(parser))) {
     const Array = [n]ParserResult(@TypeOf(parser));
     const Res = Result(Array);
@@ -115,7 +129,10 @@ pub fn manyN(
         fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
             var rem = str;
             var res: Array = undefined;
-            for (res) |*value| {
+            for (res) |*value, i| {
+                if (i != 0)
+                    rem = (try options.separator(allocator, rem)).rest;
+
                 const r = try parser(allocator, rem);
                 rem = r.rest;
                 value.* = r.value;
@@ -126,44 +143,87 @@ pub fn manyN(
     }.func;
 }
 
-/// Construct a parser that repeatedly uses `parser` until it fails
-/// or `m` iterations is reached. The parser constructed will only
-/// succeed if `parser` succeeded at least `n` times. The parser's
-/// result will be a string containing everything parsed.
-pub fn manyRange(
-    comptime n: usize,
-    comptime m: usize,
-    comptime parser: anytype,
-) Parser([]const u8) {
-    const Res = Result([]const u8);
-    typecheckParser(@TypeOf(parser));
+test "manyN" {
+    const allocator = testing.failing_allocator;
+    const parser1 = comptime manyN(ascii.range('a', 'b'), 3, .{});
+    expectResult([3]u8, .{ .value = "aba".*, .rest = "bab" }, parser1(allocator, "ababab"));
+
+    const parser2 = comptime manyN(ascii.range('a', 'b'), 3, .{ .separator = ascii.char(',') });
+    expectResult([3]u8, .{ .value = "aba".*, .rest = ",b,a,b" }, parser2(allocator, "a,b,a,b,a,b"));
+}
+
+pub const ManyOptions = struct {
+    /// The min number of elements `many` should parse for parsing to be
+    /// considered successful.
+    min: usize = 0,
+
+    /// The maximum number of elements `many` will parse. `many` will stop
+    /// parsing after reaching this number of elements even if more elements
+    /// could be parsed.
+    max: usize = math.maxInt(usize),
+
+    /// Have `many` collect the results of all elements in an allocated slice.
+    /// Setting this to false, and `many` will instead just return the parsed
+    /// string as the result without any allocation.
+    collect: bool = true,
+
+    /// A parser used to parse the content between each element `many` parses.
+    /// The default is `noop`, so each element will be parsed one after another.
+    separator: Parser(void) = noop,
+};
+
+fn Many(comptime parser: anytype, comptime options: ManyOptions) type {
+    if (options.collect)
+        return []ParserResult(@TypeOf(parser));
+    return []const u8;
+}
+
+/// Construct a parser that repeatedly uses `parser` as long as it succeeds
+/// or until `opt.max` is reach. See `ManyOptions` for options this function
+/// exposes.
+pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many(parser, options)) {
+    const ElementParser = @TypeOf(parser);
+    const Element = ParserResult(ElementParser);
+    const Res = Result(Many(parser, options));
+    typecheckParser(ElementParser);
+
     return struct {
         fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
-            const first_n = try manyN(n, parser)(allocator, str);
-            var rem = first_n.rest;
+            var res = if (options.collect)
+                try std.ArrayList(Element).initCapacity(allocator, options.min)
+            else {};
+            errdefer if (options.collect) res.deinit();
 
-            var i: usize = n;
-            while (i < m) : (i += 1) {
-                const r = parser(allocator, rem) catch |e| switch (e) {
+            var rem = str;
+            var i: usize = 0;
+            while (i < options.max) : (i += 1) {
+                const after_seperator = if (i != 0)
+                    (options.separator(allocator, rem) catch break).rest
+                else
+                    rem;
+
+                const r = parser(allocator, after_seperator) catch |e| switch (e) {
                     error.ParserFailed => break,
                     else => return e,
                 };
                 rem = r.rest;
+                if (options.collect)
+                    try res.append(r.value);
             }
-            return Res{ .value = str[0 .. str.len - rem.len], .rest = rem };
+            if (i < options.min)
+                return error.ParserFailed;
+
+            return Res{
+                .value = if (options.collect) res.toOwnedSlice() else str[0 .. str.len - rem.len],
+                .rest = rem,
+            };
         }
     }.func;
 }
 
-/// Construct a parser that repeatedly uses `parser` until it fails.
-/// The parser's result will be a string containing everything parsed.
-pub fn many(comptime parser: anytype) Parser([]const u8) {
-    return manyRange(0, math.maxInt(usize), parser);
-}
-
 test "many" {
     const allocator = testing.failing_allocator;
-    const parser1 = comptime many(string("ab"));
+    const parser1 = comptime many(string("ab"), .{ .collect = false });
     expectResult([]const u8, .{ .value = "", .rest = "" }, parser1(allocator, ""));
     expectResult([]const u8, .{ .value = "", .rest = "a" }, parser1(allocator, "a"));
     expectResult([]const u8, .{ .value = "ab", .rest = "" }, parser1(allocator, "ab"));
@@ -172,7 +232,7 @@ test "many" {
     expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser1(allocator, "ababa"));
     expectResult([]const u8, .{ .value = "ababab", .rest = "" }, parser1(allocator, "ababab"));
 
-    const parser2 = comptime manyRange(1, 2, string("ab"));
+    const parser2 = comptime many(string("ab"), .{ .collect = false, .min = 1, .max = 2 });
     expectResult([]const u8, error.ParserFailed, parser2(allocator, ""));
     expectResult([]const u8, error.ParserFailed, parser2(allocator, "a"));
     expectResult([]const u8, .{ .value = "ab", .rest = "" }, parser2(allocator, "ab"));
@@ -181,11 +241,24 @@ test "many" {
     expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser2(allocator, "ababa"));
     expectResult([]const u8, .{ .value = "abab", .rest = "ab" }, parser2(allocator, "ababab"));
 
-    const parser3 = comptime many(utf8.char(0x100));
-    expectResult([]const u8, .{ .value = "ĀĀĀ", .rest = "āāā" }, parser3(allocator, "ĀĀĀāāā"));
+    const parser3 = comptime many(string("ab"), .{ .collect = false, .separator = ascii.char(',') });
+    expectResult([]const u8, .{ .value = "", .rest = "" }, parser3(allocator, ""));
+    expectResult([]const u8, .{ .value = "", .rest = "a" }, parser3(allocator, "a"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "" }, parser3(allocator, "ab"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser3(allocator, "aba"));
+    expectResult([]const u8, .{ .value = "ab", .rest = "ab" }, parser3(allocator, "abab"));
+    expectResult([]const u8, .{ .value = "ab,ab", .rest = "" }, parser3(allocator, "ab,ab"));
+    expectResult([]const u8, .{ .value = "ab,ab", .rest = "," }, parser3(allocator, "ab,ab,"));
 
-    const parser4 = comptime manyN(3, ascii.range('a', 'b'));
-    expectResult([3]u8, .{ .value = "aba".*, .rest = "bab" }, parser4(allocator, "ababab"));
+    const parser4 = comptime many(utf8.char(0x100), .{ .collect = false });
+    expectResult([]const u8, .{ .value = "ĀĀĀ", .rest = "āāā" }, parser4(allocator, "ĀĀĀāāā"));
+
+    const parser5 = comptime many(utf8.range(0x100, 0x100), .{});
+    const res = try parser5(testing.allocator, "ĀĀĀāāā");
+    defer testing.allocator.free(res.value);
+
+    var expect = [_]u21{ 'Ā', 'Ā', 'Ā' };
+    expectResult([]u21, .{ .value = &expect, .rest = "āāā" }, res);
 }
 
 /// Construct a parser that will call `parser` on the string
@@ -522,7 +595,7 @@ test "map" {
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1(allocator, "20 20aa"));
     expectResult(Point, error.ParserFailed, parser1(allocator, "12"));
 
-    const parser2 = comptime map(Point, toStruct(Point), manyN(2, combine(.{ int(usize, 10), ascii.char(' ') })));
+    const parser2 = comptime map(Point, toStruct(Point), manyN(combine(.{ int(usize, 10), ascii.char(' ') }), 2, .{}));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser2(allocator, "10 10 "));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2(allocator, "20 20 aa"));
     expectResult(Point, error.ParserFailed, parser2(allocator, "12"));
@@ -538,7 +611,7 @@ pub fn discard(comptime parser: anytype) Parser(void) {
 
 test "discard" {
     const allocator = testing.failing_allocator;
-    const parser = comptime discard(many(ascii.char(' ')));
+    const parser = comptime discard(many(ascii.char(' '), .{ .collect = false }));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(allocator, "abc"));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(allocator, " abc"));
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(allocator, "  abc"));
@@ -550,7 +623,7 @@ test "discard" {
 pub fn intToken(comptime base: u8) Parser([]const u8) {
     return comptime asStr(combine(.{
         opt(ascii.char('-')),
-        manyRange(1, math.maxInt(usize), ascii.digit(base)),
+        many(ascii.digit(base), .{ .collect = false, .min = 1 }),
     }));
 }
 
@@ -625,6 +698,9 @@ pub fn expectResult(
     testing.expectEqualStrings(expect.rest, actual.rest);
     switch (T) {
         []const u8 => testing.expectEqualStrings(expect.value, actual.value),
-        else => testing.expectEqual(expect.value, actual.value),
+        else => switch (@typeInfo(T)) {
+            .Pointer => |ptr| testing.expectEqualSlices(ptr.child, expect.value, actual.value),
+            else => testing.expectEqual(expect.value, actual.value),
+        },
     }
 }

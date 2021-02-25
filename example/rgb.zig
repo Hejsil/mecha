@@ -18,9 +18,9 @@ fn toByte2(v: [2]u8) u8 {
 
 const hex = convert(u8, toInt(u8, 16), asStr(ascii.digit(16)));
 const hex1 = map(u8, toByte, hex);
-const hex2 = map(u8, toByte2, manyN(2, hex));
-const rgb1 = map(Rgb, toStruct(Rgb), manyN(3, hex1));
-const rgb2 = map(Rgb, toStruct(Rgb), manyN(3, hex2));
+const hex2 = map(u8, toByte2, manyN(hex, 2, .{}));
+const rgb1 = map(Rgb, toStruct(Rgb), manyN(hex1, 3, .{}));
+const rgb2 = map(Rgb, toStruct(Rgb), manyN(hex2, 3, .{}));
 const rgb = combine(.{
     ascii.char('#'),
     oneOf(.{

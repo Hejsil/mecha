@@ -18,12 +18,12 @@ const value = oneOf(.{
 
 const members = combine(.{
     member,
-    discard(many(combine(.{ comma, member }))),
+    discard(many(combine(.{ comma, member }), .{ .collect = false })),
 });
 
 const elements = combine(.{
     element,
-    discard(many(combine(.{ comma, element }))),
+    discard(many(combine(.{ comma, element }), .{ .collect = false })),
 });
 
 const array = combine(.{ lbracket, discard(opt(elements)), rbracket });
@@ -51,7 +51,7 @@ fn token(comptime parser: anytype) Parser(void) {
     return combine(.{ discard(parser), ws });
 }
 
-const chars = discard(many(char));
+const chars = discard(many(char, .{ .collect = false }));
 
 const char = oneOf(.{
     discard(utf8.range(0x0020, '"' - 1)),
@@ -85,7 +85,7 @@ const integer = oneOf(.{
     combine(.{ utf8.char('-'), jdigit }),
 });
 
-const digits = discard(manyRange(1, std.math.maxInt(usize), jdigit));
+const digits = discard(many(jdigit, .{ .collect = false, .min = 1 }));
 
 const jdigit = oneOf(.{
     utf8.char('0'),
@@ -112,7 +112,7 @@ const ws = discard(many(oneOf(.{
     utf8.char(0x000A),
     utf8.char(0x000D),
     utf8.char(0x0009),
-})));
+}), .{ .collect = false }));
 
 fn ok(s: []const u8) void {
     const res = json(testing.allocator, s) catch @panic("test failure");

@@ -617,20 +617,40 @@ test "discard" {
     expectResult(void, .{ .value = {}, .rest = "abc" }, parser(allocator, "  abc"));
 }
 
+fn digitsForBase(val: anytype, base: u8) usize {
+    var res: usize = 0;
+    var tmp = val;
+    while (tmp != 0) : (tmp /= @intCast(@TypeOf(val), base))
+        res += 1;
+    return math.max(1, res);
+}
+
 /// Construct a parser that succeeds if it parser an integer of
-/// `base`. The result of this parser will be the string containing
-/// the match.
-pub fn intToken(comptime base: u8) Parser([]const u8) {
+/// `base`. This parser will stop parsing digits after `max_digits`
+/// after the leading zeros haven been reached. The result of this
+/// parser will be the string containing the match.
+pub fn intToken(comptime base: u8, comptime max_digits: usize) Parser([]const u8) {
     return comptime asStr(combine(.{
         opt(ascii.char('-')),
-        many(ascii.digit(base), .{ .collect = false, .min = 1 }),
+        oneOf(.{
+            asStr(combine(.{
+                many(ascii.char('0'), .{ .collect = false }),
+                many(ascii.digit(base), .{ .collect = false, .min = 1, .max = max_digits }),
+            })),
+            many(ascii.char('0'), .{ .collect = false, .min = 1 }),
+        }),
     }));
 }
 
-/// Same as `intToken` but also converts the parsed string
-/// to an integer.
+/// Same as `intToken` but also converts the parsed string to an
+/// integer. This parser will at most parse the same number of digits
+/// as the underlying interger can hold in the specified base.
 pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
-    return comptime convert(Int, toInt(Int, base), intToken(base));
+    return comptime convert(
+        Int,
+        toInt(Int, base),
+        intToken(base, digitsForBase(math.maxInt(Int), base)),
+    );
 }
 
 test "int" {
@@ -640,6 +660,7 @@ test "int" {
     expectResult(u8, .{ .value = 1, .rest = "" }, parser1(allocator, "1"));
     expectResult(u8, .{ .value = 1, .rest = "a" }, parser1(allocator, "1a"));
     expectResult(u8, .{ .value = 255, .rest = "" }, parser1(allocator, "255"));
+    expectResult(u8, .{ .value = 255, .rest = "5" }, parser1(allocator, "2555"));
     expectResult(u8, error.ParserFailed, parser1(allocator, "256"));
 
     const parser2 = int(u8, 16);
@@ -649,7 +670,9 @@ test "int" {
     expectResult(u8, .{ .value = 0x01, .rest = "g" }, parser2(allocator, "1g"));
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2(allocator, "ff"));
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2(allocator, "FF"));
-    expectResult(u8, error.ParserFailed, parser2(allocator, "100"));
+    expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2(allocator, "00FF"));
+    expectResult(u8, .{ .value = 0x10, .rest = "0" }, parser2(allocator, "100"));
+    expectResult(u8, .{ .value = 0xf, .rest = "g" }, parser2(allocator, "fg"));
 }
 
 /// Construct a parser that succeeds if it parses any tag from `Enum` as

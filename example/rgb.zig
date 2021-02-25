@@ -8,17 +8,12 @@ const Rgb = struct {
     b: u8,
 };
 
-fn toByte(v: u8) u8 {
-    return v * 0x10 + v;
+fn toByte(v: u4) u8 {
+    return @as(u8, v) * 0x10 + v;
 }
 
-fn toByte2(v: [2]u8) u8 {
-    return v[0] * 0x10 + v[1];
-}
-
-const hex = convert(u8, toInt(u8, 16), asStr(ascii.digit(16)));
-const hex1 = map(u8, toByte, hex);
-const hex2 = map(u8, toByte2, manyN(hex, 2, .{}));
+const hex1 = map(u8, toByte, int(u4, 16));
+const hex2 = int(u8, 16);
 const rgb1 = map(Rgb, toStruct(Rgb), manyN(hex1, 3, .{}));
 const rgb2 = map(Rgb, toStruct(Rgb), manyN(hex2, 3, .{}));
 const rgb = combine(.{

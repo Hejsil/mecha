@@ -652,6 +652,43 @@ test "int" {
     expectResult(u8, error.ParserFailed, parser2(allocator, "100"));
 }
 
+/// Construct a parser that succeeds if it parses any tag from `Enum` as
+/// a string. The longest match is always chosen, so for `enum{a,aa}` the
+/// "aa" string will succeed parsing and have the result of `.aa` and not
+/// `.a`.
+pub fn enumeration(comptime Enum: type) Parser(Enum) {
+    const Res = Result(Enum);
+    return struct {
+        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+            var res: Error!Res = error.ParserFailed;
+            inline for (@typeInfo(Enum).Enum.fields) |field| next: {
+                const p = comptime string(field.name);
+                const new = p(allocator, str) catch |err| switch (err) {
+                    error.ParserFailed => break :next,
+                    else => |e| return e,
+                };
+                const old = res catch Res{ .value = undefined, .rest = str };
+                if (new.rest.len < old.rest.len)
+                    res = Res{ .value = @field(Enum, field.name), .rest = new.rest };
+            }
+
+            return res;
+        }
+    }.func;
+}
+
+test "enumeration" {
+    const allocator = testing.failing_allocator;
+    const E1 = enum { a, b, aa };
+    const parser1 = enumeration(E1);
+    expectResult(E1, .{ .value = .a, .rest = "" }, parser1(allocator, "a"));
+    expectResult(E1, .{ .value = .aa, .rest = "" }, parser1(allocator, "aa"));
+    expectResult(E1, .{ .value = .b, .rest = "" }, parser1(allocator, "b"));
+    expectResult(E1, .{ .value = .a, .rest = "b" }, parser1(allocator, "ab"));
+    expectResult(E1, .{ .value = .b, .rest = "b" }, parser1(allocator, "bb"));
+    expectResult(E1, error.ParserFailed, parser1(allocator, "256"));
+}
+
 /// Creates a parser that calls a function to obtain its underlying parser.
 /// This function introduces the indirection required for recursive grammars.
 /// ```

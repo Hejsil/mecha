@@ -646,11 +646,26 @@ pub fn intToken(comptime base: u8, comptime max_digits: usize) Parser([]const u8
 /// integer. This parser will at most parse the same number of digits
 /// as the underlying interger can hold in the specified base.
 pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
-    return comptime convert(
-        Int,
-        toInt(Int, base),
-        intToken(base, digitsForBase(math.maxInt(Int), base)),
-    );
+    const Res = Result(Int);
+
+    return struct {
+        fn intParser(_: *mem.Allocator, str: []const u8) Error!Res {
+            if (str.len == 0)
+                return error.ParserFailed;
+
+            const first = fmt.charToDigit(str[0], base) catch return error.ParserFailed;
+            var res: Int = math.cast(Int, first) catch return error.ParserFailed;
+            const end = for (str[1..]) |c, i| {
+                const d = fmt.charToDigit(c, base) catch break i;
+                const casted_b = math.cast(Int, base) catch break i;
+                const casted_d = math.cast(Int, d) catch break i;
+                const next = math.mul(Int, res, casted_b) catch break i;
+                res = math.add(Int, next, casted_d) catch break i;
+            } else str.len - 1;
+
+            return Res{ .value = res, .rest = str[end + 1 ..] };
+        }
+    }.intParser;
 }
 
 test "int" {
@@ -661,7 +676,7 @@ test "int" {
     expectResult(u8, .{ .value = 1, .rest = "a" }, parser1(allocator, "1a"));
     expectResult(u8, .{ .value = 255, .rest = "" }, parser1(allocator, "255"));
     expectResult(u8, .{ .value = 255, .rest = "5" }, parser1(allocator, "2555"));
-    expectResult(u8, error.ParserFailed, parser1(allocator, "256"));
+    expectResult(u8, .{ .value = 25, .rest = "6" }, parser1(allocator, "256"));
 
     const parser2 = int(u8, 16);
     expectResult(u8, .{ .value = 0x00, .rest = "" }, parser2(allocator, "0"));

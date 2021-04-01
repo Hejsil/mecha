@@ -590,12 +590,12 @@ test "map" {
         x: usize,
         y: usize,
     };
-    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, 10), ascii.char(' '), int(usize, 10) }));
+    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, .{}), ascii.char(' '), int(usize, .{}) }));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser1(allocator, "10 10"));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1(allocator, "20 20aa"));
     expectResult(Point, error.ParserFailed, parser1(allocator, "12"));
 
-    const parser2 = comptime map(Point, toStruct(Point), manyN(combine(.{ int(usize, 10), ascii.char(' ') }), 2, .{}));
+    const parser2 = comptime map(Point, toStruct(Point), manyN(combine(.{ int(usize, .{}), ascii.char(' ') }), 2, .{}));
     expectResult(Point, .{ .value = .{ .x = 10, .y = 10 }, .rest = "" }, parser2(allocator, "10 10 "));
     expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2(allocator, "20 20 aa"));
     expectResult(Point, error.ParserFailed, parser2(allocator, "12"));
@@ -625,27 +625,28 @@ fn digitsForBase(val: anytype, base: u8) usize {
     return math.max(1, res);
 }
 
+pub const IntOptions = struct {
+    base: u8 = 10,
+    max_digits: usize = math.maxInt(usize),
+};
+
 /// Construct a parser that succeeds if it parser an integer of
 /// `base`. This parser will stop parsing digits after `max_digits`
 /// after the leading zeros haven been reached. The result of this
 /// parser will be the string containing the match.
-pub fn intToken(comptime base: u8, comptime max_digits: usize) Parser([]const u8) {
+pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
+    debug.assert(options.max_digits != 0);
     return comptime asStr(combine(.{
         opt(ascii.char('-')),
-        oneOf(.{
-            asStr(combine(.{
-                many(ascii.char('0'), .{ .collect = false }),
-                many(ascii.digit(base), .{ .collect = false, .min = 1, .max = max_digits }),
-            })),
-            many(ascii.char('0'), .{ .collect = false, .min = 1 }),
-        }),
+        many(ascii.digit(options.base), .{ .collect = false, .min = 1, .max = options.max_digits }),
     }));
 }
 
 /// Same as `intToken` but also converts the parsed string to an
 /// integer. This parser will at most parse the same number of digits
 /// as the underlying interger can hold in the specified base.
-pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
+pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
+    debug.assert(options.max_digits != 0);
     const Res = Result(Int);
 
     return struct {
@@ -653,15 +654,16 @@ pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
             if (str.len == 0)
                 return error.ParserFailed;
 
-            const first = fmt.charToDigit(str[0], base) catch return error.ParserFailed;
+            const max_digits = math.min(str.len, options.max_digits);
+            const first = fmt.charToDigit(str[0], options.base) catch return error.ParserFailed;
             var res: Int = math.cast(Int, first) catch return error.ParserFailed;
-            const end = for (str[1..]) |c, i| {
-                const d = fmt.charToDigit(c, base) catch break i;
-                const casted_b = math.cast(Int, base) catch break i;
+            const end = for (str[1..max_digits]) |c, i| {
+                const d = fmt.charToDigit(c, options.base) catch break i;
+                const casted_b = math.cast(Int, options.base) catch break i;
                 const casted_d = math.cast(Int, d) catch break i;
                 const next = math.mul(Int, res, casted_b) catch break i;
                 res = math.add(Int, next, casted_d) catch break i;
-            } else str.len - 1;
+            } else max_digits - 1;
 
             return Res{ .value = res, .rest = str[end + 1 ..] };
         }
@@ -670,7 +672,7 @@ pub fn int(comptime Int: type, comptime base: u8) Parser(Int) {
 
 test "int" {
     const allocator = testing.failing_allocator;
-    const parser1 = int(u8, 10);
+    const parser1 = int(u8, .{});
     expectResult(u8, .{ .value = 0, .rest = "" }, parser1(allocator, "0"));
     expectResult(u8, .{ .value = 1, .rest = "" }, parser1(allocator, "1"));
     expectResult(u8, .{ .value = 1, .rest = "a" }, parser1(allocator, "1a"));
@@ -678,7 +680,7 @@ test "int" {
     expectResult(u8, .{ .value = 255, .rest = "5" }, parser1(allocator, "2555"));
     expectResult(u8, .{ .value = 25, .rest = "6" }, parser1(allocator, "256"));
 
-    const parser2 = int(u8, 16);
+    const parser2 = int(u8, .{ .base = 16 });
     expectResult(u8, .{ .value = 0x00, .rest = "" }, parser2(allocator, "0"));
     expectResult(u8, .{ .value = 0x01, .rest = "" }, parser2(allocator, "1"));
     expectResult(u8, .{ .value = 0x1a, .rest = "" }, parser2(allocator, "1a"));
@@ -688,6 +690,10 @@ test "int" {
     expectResult(u8, .{ .value = 0xff, .rest = "" }, parser2(allocator, "00FF"));
     expectResult(u8, .{ .value = 0x10, .rest = "0" }, parser2(allocator, "100"));
     expectResult(u8, .{ .value = 0xf, .rest = "g" }, parser2(allocator, "fg"));
+
+    const parser3 = int(u8, .{ .base = 16, .max_digits = 2 });
+    expectResult(u8, .{ .value = 0xff, .rest = "" }, parser3(allocator, "FF"));
+    expectResult(u8, .{ .value = 0x00, .rest = "FF" }, parser3(allocator, "00FF"));
 }
 
 /// Construct a parser that succeeds if it parses any tag from `Enum` as

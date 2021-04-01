@@ -12,8 +12,16 @@ fn toByte(v: u4) u8 {
     return @as(u8, v) * 0x10 + v;
 }
 
-const hex1 = map(u8, toByte, int(u4, .{ .base = 16, .max_digits = 1 }));
-const hex2 = int(u8, .{ .base = 16, .max_digits = 2 });
+const hex1 = map(u8, toByte, int(u4, .{
+    .parse_sign = false,
+    .base = 16,
+    .max_digits = 1,
+}));
+const hex2 = int(u8, .{
+    .parse_sign = false,
+    .base = 16,
+    .max_digits = 2,
+});
 const rgb1 = map(Rgb, toStruct(Rgb), manyN(hex1, 3, .{}));
 const rgb2 = map(Rgb, toStruct(Rgb), manyN(hex2, 3, .{}));
 const rgb = combine(.{

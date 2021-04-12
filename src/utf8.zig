@@ -6,6 +6,28 @@ const mem = std.mem;
 const testing = std.testing;
 const unicode = std.unicode;
 
+/// Constructs a parser that parses a single utf8 codepoint based on
+/// a `predicate`. If the `predicate` returns true, the parser will
+/// return the codepoint parsed and the rest of the string. Otherwise
+/// the parser will fail.
+pub fn wrap(comptime predicate: fn (u21) bool) mecha.Parser(u21) {
+    const Res = mecha.Result(u21);
+    return struct {
+        fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
+            if (str.len == 0)
+                return error.ParserFailed;
+            const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
+            if (cp_len > str.len)
+                return error.ParserFailed;
+
+            const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
+            if (!predicate(cp))
+                return error.ParserFailed;
+            return Res{ .value = cp, .rest = str[cp_len..] };
+        }
+    }.func;
+}
+
 /// Constructs a parser that only succeeds if the string starts with `c`.
 pub fn char(comptime c: u21) mecha.Parser(void) {
     comptime {
@@ -30,30 +52,14 @@ test "char" {
 /// a codepoint that is in between `start` and `end` inclusively.
 /// The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
-    const Res = mecha.Result(u21);
-    return struct {
-        fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
-            if (str.len == 0)
-                return error.ParserFailed;
-
-            if (end <= math.maxInt(u7)) {
-                switch (str[0]) {
-                    start...end => return Res{ .value = str[0], .rest = str[1..] },
-                    else => return error.ParserFailed,
-                }
-            } else {
-                const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
-                if (cp_len > str.len)
-                    return error.ParserFailed;
-
-                const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
-                switch (cp) {
-                    start...end => return Res{ .value = cp, .rest = str[cp_len..] },
-                    else => return error.ParserFailed,
-                }
-            }
+    return wrap(struct {
+        fn pred(cp: u21) bool {
+            return switch (cp) {
+                start...end => true,
+                else => false,
+            };
         }
-    }.func;
+    }.pred);
 }
 
 test "range" {

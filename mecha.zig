@@ -29,7 +29,11 @@ pub fn Result(comptime T: type) type {
 
 /// The type of all parser that can work with `mecha`
 pub fn Parser(comptime T: type) type {
-    return fn (*mem.Allocator, []const u8) Error!Result(T);
+    return ParserWithCC(T, .Unspecified);
+}
+
+pub fn ParserWithCC(comptime T: type, comptime cc: std.builtin.CallingConvention) type {
+    return fn (*mem.Allocator, []const u8) callconv(cc) Error!Result(T);
 }
 
 fn typecheckParser(comptime P: type) void {
@@ -41,7 +45,7 @@ fn typecheckParser(comptime P: type) void {
                 .ErrorUnion => |e| e.payload.Value,
                 else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
             };
-            if (P != Parser(T))
+            if (P != ParserWithCC(T, func.calling_convention))
                 @compileError("expected 'mecha.Parser(" ++ @typeName(T) ++ ")', found '" ++ @typeName(P) ++ "'");
         },
         else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
@@ -113,7 +117,7 @@ test "string" {
 pub const ManyNOptions = struct {
     /// A parser used to parse the content between each element `manyN` parses.
     /// The default is `noop`, so each element will be parsed one after another.
-    separator: Parser(void) = noop,
+    separator: anytype = noop,
 };
 
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
@@ -169,7 +173,7 @@ pub const ManyOptions = struct {
 
     /// A parser used to parse the content between each element `many` parses.
     /// The default is `noop`, so each element will be parsed one after another.
-    separator: Parser(void) = noop,
+    separator: anytype = noop,
 };
 
 fn Many(comptime parser: anytype, comptime options: ManyOptions) type {

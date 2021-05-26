@@ -8,19 +8,22 @@ const Rgb = struct {
     b: u8,
 };
 
-fn toByte(v: u8) u8 {
-    return v * 0x10 + v;
+fn toByte(v: u4) u8 {
+    return @as(u8, v) * 0x10 + v;
 }
 
-fn toByte2(v: [2]u8) u8 {
-    return v[0] * 0x10 + v[1];
-}
-
-const hex = convert(u8, toInt(u8, 16), asStr(ascii.digit(16)));
-const hex1 = map(u8, toByte, hex);
-const hex2 = map(u8, toByte2, manyN(2, hex));
-const rgb1 = map(Rgb, toStruct(Rgb), manyN(3, hex1));
-const rgb2 = map(Rgb, toStruct(Rgb), manyN(3, hex2));
+const hex1 = map(u8, toByte, int(u4, .{
+    .parse_sign = false,
+    .base = 16,
+    .max_digits = 1,
+}));
+const hex2 = int(u8, .{
+    .parse_sign = false,
+    .base = 16,
+    .max_digits = 2,
+});
+const rgb1 = map(Rgb, toStruct(Rgb), manyN(hex1, 3, .{}));
+const rgb2 = map(Rgb, toStruct(Rgb), manyN(hex2, 3, .{}));
 const rgb = combine(.{
     ascii.char('#'),
     oneOf(.{
@@ -30,13 +33,25 @@ const rgb = combine(.{
 });
 
 test "rgb" {
-    const a = rgb("#aabbcc").?.value;
-    std.testing.expectEqual(@as(u8, 0xaa), a.r);
-    std.testing.expectEqual(@as(u8, 0xbb), a.g);
-    std.testing.expectEqual(@as(u8, 0xcc), a.b);
+    const testing = std.testing;
+    const allocator = testing.allocator;
+    const a = (try rgb(allocator, "#aabbcc")).value;
+    try testing.expectEqual(@as(u8, 0xaa), a.r);
+    try testing.expectEqual(@as(u8, 0xbb), a.g);
+    try testing.expectEqual(@as(u8, 0xcc), a.b);
 
-    const b = rgb("#abc").?.value;
-    std.testing.expectEqual(@as(u8, 0xaa), b.r);
-    std.testing.expectEqual(@as(u8, 0xbb), b.g);
-    std.testing.expectEqual(@as(u8, 0xcc), b.b);
+    const b = (try rgb(allocator, "#abc")).value;
+    try testing.expectEqual(@as(u8, 0xaa), b.r);
+    try testing.expectEqual(@as(u8, 0xbb), b.g);
+    try testing.expectEqual(@as(u8, 0xcc), b.b);
+
+    const c = (try rgb(allocator, "#000000")).value;
+    try testing.expectEqual(@as(u8, 0), c.r);
+    try testing.expectEqual(@as(u8, 0), c.g);
+    try testing.expectEqual(@as(u8, 0), c.b);
+
+    const d = (try rgb(allocator, "#000")).value;
+    try testing.expectEqual(@as(u8, 0), d.r);
+    try testing.expectEqual(@as(u8, 0), d.g);
+    try testing.expectEqual(@as(u8, 0), d.b);
 }

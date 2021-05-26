@@ -1,8 +1,8 @@
 const std = @import("std");
 usingnamespace @import("mecha");
 
-const testing = std.testing;
 const builtin = std.builtin;
+const testing = std.testing;
 
 const json = combine(.{ ws, element });
 
@@ -18,40 +18,40 @@ const value = oneOf(.{
 
 const members = combine(.{
     member,
-    discard(many(combine(.{ comma, member }))),
+    discard(many(combine(.{ comma, member }), .{ .collect = false })),
 });
 
 const elements = combine(.{
     element,
-    discard(many(combine(.{ comma, element }))),
+    discard(many(combine(.{ comma, element }), .{ .collect = false })),
 });
 
-const member = combine(.{ jstring, colon, element });
-const object = combine(.{ lcurly, discard(opt(members)), rcurly });
 const array = combine(.{ lbracket, discard(opt(elements)), rbracket });
 const element = ref(valueRef);
+const member = combine(.{ jstring, colon, element });
+const object = combine(.{ lcurly, discard(opt(members)), rcurly });
 
 fn valueRef() Parser(void) {
     return value;
 }
 
-const number = token(combine(.{ integer, fraction, exponent }));
-const jstring = token(combine(.{ utf8.char('"'), chars, utf8.char('"') }));
-const jtrue = token(string("true"));
-const jfalse = token(string("false"));
-const jnull = token(string("null"));
-const lcurly = token(utf8.char('{'));
-const rcurly = token(utf8.char('}'));
-const lbracket = token(utf8.char('['));
-const rbracket = token(utf8.char(']'));
 const colon = token(utf8.char(':'));
 const comma = token(utf8.char(','));
+const jfalse = token(string("false"));
+const jnull = token(string("null"));
+const jstring = token(combine(.{ utf8.char('"'), chars, utf8.char('"') }));
+const jtrue = token(string("true"));
+const lbracket = token(utf8.char('['));
+const lcurly = token(utf8.char('{'));
+const number = token(combine(.{ integer, fraction, exponent }));
+const rbracket = token(utf8.char(']'));
+const rcurly = token(utf8.char('}'));
 
 fn token(comptime parser: anytype) Parser(void) {
     return combine(.{ discard(parser), ws });
 }
 
-const chars = discard(many(char));
+const chars = discard(many(char, .{ .collect = false }));
 
 const char = oneOf(.{
     discard(utf8.range(0x0020, '"' - 1)),
@@ -85,7 +85,7 @@ const integer = oneOf(.{
     combine(.{ utf8.char('-'), jdigit }),
 });
 
-const digits = discard(manyRange(1, std.math.maxInt(usize), jdigit));
+const digits = discard(many(jdigit, .{ .collect = false, .min = 1 }));
 
 const jdigit = oneOf(.{
     utf8.char('0'),
@@ -112,26 +112,24 @@ const ws = discard(many(oneOf(.{
     utf8.char(0x000A),
     utf8.char(0x000D),
     utf8.char(0x0009),
-})));
+}), .{ .collect = false }));
 
-fn ok(comptime s: []const u8) void {
-    const res = json(s);
-    testing.expect(res != null);
-    testing.expectEqualStrings("", res.?.rest);
+fn ok(s: []const u8) !void {
+    const res = json(testing.allocator, s) catch @panic("test failure");
+    try testing.expectEqualStrings("", res.rest);
 }
 
-fn err(comptime s: []const u8) void {
-    testing.expect(json(s) == null);
+fn err(s: []const u8) !void {
+    try testing.expectError(error.ParserFailed, json(testing.allocator, s));
 }
 
-fn errNotAllParsed(comptime s: []const u8) void {
-    const res = json(s);
-    testing.expect(res != null);
-    testing.expect(res.?.rest.len != 0);
+fn errNotAllParsed(s: []const u8) !void {
+    const res = json(testing.allocator, s) catch @panic("test failure");
+    try testing.expect(res.rest.len != 0);
 }
 
-fn any(comptime s: []const u8) void {
-    _ = json(s);
+fn any(s: []const u8) void {
+    _ = json(testing.allocator, s) catch {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -139,7 +137,7 @@ fn any(comptime s: []const u8) void {
 // Additional tests not part of test JSONTestSuite.
 
 test "y_trailing_comma_after_empty" {
-    ok(
+    try ok(
         \\{"1":[],"2":{},"3":"4"}
     );
 }
@@ -147,252 +145,252 @@ test "y_trailing_comma_after_empty" {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 test "y_array_arraysWithSpaces" {
-    ok(
+    try ok(
         \\[[]   ]
     );
 }
 
 test "y_array_empty" {
-    ok(
+    try ok(
         \\[]
     );
 }
 
 test "y_array_empty-string" {
-    ok(
+    try ok(
         \\[""]
     );
 }
 
 test "y_array_ending_with_newline" {
-    ok(
+    try ok(
         \\["a"]
     );
 }
 
 test "y_array_false" {
-    ok(
+    try ok(
         \\[false]
     );
 }
 
 test "y_array_heterogeneous" {
-    ok(
+    try ok(
         \\[null, 1, "1", {}]
     );
 }
 
 test "y_array_null" {
-    ok(
+    try ok(
         \\[null]
     );
 }
 
 test "y_array_with_1_and_newline" {
-    ok(
+    try ok(
         \\[1
         \\]
     );
 }
 
 test "y_array_with_leading_space" {
-    ok(
+    try ok(
         \\ [1]
     );
 }
 
 test "y_array_with_several_null" {
-    ok(
+    try ok(
         \\[1,null,null,null,2]
     );
 }
 
 test "y_array_with_trailing_space" {
-    ok("[2] ");
+    try ok("[2] ");
 }
 
 test "y_number_0e+1" {
-    ok(
+    try ok(
         \\[0e+1]
     );
 }
 
 test "y_number_0e1" {
-    ok(
+    try ok(
         \\[0e1]
     );
 }
 
 test "y_number_after_space" {
-    ok(
+    try ok(
         \\[ 4]
     );
 }
 
 test "y_number_double_close_to_zero" {
-    ok(
+    try ok(
         \\[-0.000000000000000000000000000000000000000000000000000000000000000000000000000001]
     );
 }
 
 test "y_number_int_with_exp" {
-    ok(
+    try ok(
         \\[20e1]
     );
 }
 
 test "y_number" {
-    ok(
+    try ok(
         \\[123e65]
     );
 }
 
 test "y_number_minus_zero" {
-    ok(
+    try ok(
         \\[-0]
     );
 }
 
 test "y_number_negative_int" {
-    ok(
+    try ok(
         \\[-123]
     );
 }
 
 test "y_number_negative_one" {
-    ok(
+    try ok(
         \\[-1]
     );
 }
 
 test "y_number_negative_zero" {
-    ok(
+    try ok(
         \\[-0]
     );
 }
 
 test "y_number_real_capital_e" {
-    ok(
+    try ok(
         \\[1E22]
     );
 }
 
 test "y_number_real_capital_e_neg_exp" {
-    ok(
+    try ok(
         \\[1E-2]
     );
 }
 
 test "y_number_real_capital_e_pos_exp" {
-    ok(
+    try ok(
         \\[1E+2]
     );
 }
 
 test "y_number_real_exponent" {
-    ok(
+    try ok(
         \\[123e45]
     );
 }
 
 test "y_number_real_fraction_exponent" {
-    ok(
+    try ok(
         \\[123.456e78]
     );
 }
 
 test "y_number_real_neg_exp" {
-    ok(
+    try ok(
         \\[1e-2]
     );
 }
 
 test "y_number_real_pos_exponent" {
-    ok(
+    try ok(
         \\[1e+2]
     );
 }
 
 test "y_number_simple_int" {
-    ok(
+    try ok(
         \\[123]
     );
 }
 
 test "y_number_simple_real" {
-    ok(
+    try ok(
         \\[123.456789]
     );
 }
 
 test "y_object_basic" {
-    ok(
+    try ok(
         \\{"asd":"sdf"}
     );
 }
 
 test "y_object_duplicated_key_and_value" {
-    ok(
+    try ok(
         \\{"a":"b","a":"b"}
     );
 }
 
 test "y_object_duplicated_key" {
-    ok(
+    try ok(
         \\{"a":"b","a":"c"}
     );
 }
 
 test "y_object_empty" {
-    ok(
+    try ok(
         \\{}
     );
 }
 
 test "y_object_empty_key" {
-    ok(
+    try ok(
         \\{"":0}
     );
 }
 
 test "y_object_escaped_null_in_key" {
-    ok(
+    try ok(
         \\{"foo\u0000bar": 42}
     );
 }
 
 test "y_object_extreme_numbers" {
-    ok(
+    try ok(
         \\{ "min": -1.0e+28, "max": 1.0e+28 }
     );
 }
 
 test "y_object" {
-    ok(
+    try ok(
         \\{"asd":"sdf", "dfg":"fgh"}
     );
 }
 
 test "y_object_long_strings" {
-    ok(
+    try ok(
         \\{"x":[{"id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}], "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
     );
 }
 
 test "y_object_simple" {
-    ok(
+    try ok(
         \\{"a":[]}
     );
 }
 
 test "y_object_string_unicode" {
-    ok(
+    try ok(
         \\{"title":"\u041f\u043e\u043b\u0442\u043e\u0440\u0430 \u0417\u0435\u043c\u043b\u0435\u043a\u043e\u043f\u0430" }
     );
 }
 
 test "y_object_with_newlines" {
-    ok(
+    try ok(
         \\{
         \\"a": "b"
         \\}
@@ -400,419 +398,419 @@ test "y_object_with_newlines" {
 }
 
 test "y_string_1_2_3_bytes_UTF-8_sequences" {
-    ok(
+    try ok(
         \\["\u0060\u012a\u12AB"]
     );
 }
 
 test "y_string_accepted_surrogate_pair" {
-    ok(
+    try ok(
         \\["\uD801\udc37"]
     );
 }
 
 test "y_string_accepted_surrogate_pairs" {
-    ok(
+    try ok(
         \\["\ud83d\ude39\ud83d\udc8d"]
     );
 }
 
 test "y_string_allowed_escapes" {
-    ok(
+    try ok(
         \\["\"\\\/\b\f\n\r\t"]
     );
 }
 
 test "y_string_backslash_and_u_escaped_zero" {
-    ok(
+    try ok(
         \\["\\u0000"]
     );
 }
 
 test "y_string_backslash_doublequotes" {
-    ok(
+    try ok(
         \\["\""]
     );
 }
 
 test "y_string_comments" {
-    ok(
+    try ok(
         \\["a/*b*/c/*d//e"]
     );
 }
 
 test "y_string_double_escape_a" {
-    ok(
+    try ok(
         \\["\\a"]
     );
 }
 
 test "y_string_double_escape_n" {
-    ok(
+    try ok(
         \\["\\n"]
     );
 }
 
 test "y_string_escaped_control_character" {
-    ok(
+    try ok(
         \\["\u0012"]
     );
 }
 
 test "y_string_escaped_noncharacter" {
-    ok(
+    try ok(
         \\["\uFFFF"]
     );
 }
 
 test "y_string_in_array" {
-    ok(
+    try ok(
         \\["asd"]
     );
 }
 
 test "y_string_in_array_with_leading_space" {
-    ok(
+    try ok(
         \\[ "asd"]
     );
 }
 
 test "y_string_last_surrogates_1_and_2" {
-    ok(
+    try ok(
         \\["\uDBFF\uDFFF"]
     );
 }
 
 test "y_string_nbsp_uescaped" {
-    ok(
+    try ok(
         \\["new\u00A0line"]
     );
 }
 
 test "y_string_nonCharacterInUTF-8_U+10FFFF" {
-    ok(
+    try ok(
         \\["􏿿"]
     );
 }
 
 test "y_string_nonCharacterInUTF-8_U+FFFF" {
-    ok(
+    try ok(
         \\["￿"]
     );
 }
 
 test "y_string_null_escape" {
-    ok(
+    try ok(
         \\["\u0000"]
     );
 }
 
 test "y_string_one-byte-utf-8" {
-    ok(
+    try ok(
         \\["\u002c"]
     );
 }
 
 test "y_string_pi" {
-    ok(
+    try ok(
         \\["π"]
     );
 }
 
 test "y_string_reservedCharacterInUTF-8_U+1BFFF" {
-    ok(
+    try ok(
         \\["𛿿"]
     );
 }
 
 test "y_string_simple_ascii" {
-    ok(
+    try ok(
         \\["asd "]
     );
 }
 
 test "y_string_space" {
-    ok(
+    try ok(
         \\" "
     );
 }
 
 test "y_string_surrogates_U+1D11E_MUSICAL_SYMBOL_G_CLEF" {
-    ok(
+    try ok(
         \\["\uD834\uDd1e"]
     );
 }
 
 test "y_string_three-byte-utf-8" {
-    ok(
+    try ok(
         \\["\u0821"]
     );
 }
 
 test "y_string_two-byte-utf-8" {
-    ok(
+    try ok(
         \\["\u0123"]
     );
 }
 
 test "y_string_u+2028_line_sep" {
-    ok("[\"\xe2\x80\xa8\"]");
+    try ok("[\"\xe2\x80\xa8\"]");
 }
 
 test "y_string_u+2029_par_sep" {
-    ok("[\"\xe2\x80\xa9\"]");
+    try ok("[\"\xe2\x80\xa9\"]");
 }
 
 test "y_string_uescaped_newline" {
-    ok(
+    try ok(
         \\["new\u000Aline"]
     );
 }
 
 test "y_string_uEscape" {
-    ok(
+    try ok(
         \\["\u0061\u30af\u30EA\u30b9"]
     );
 }
 
 test "y_string_unescaped_char_delete" {
-    ok("[\"\x7f\"]");
+    try ok("[\"\x7f\"]");
 }
 
 test "y_string_unicode_2" {
-    ok(
+    try ok(
         \\["⍂㈴⍂"]
     );
 }
 
 test "y_string_unicodeEscapedBackslash" {
-    ok(
+    try ok(
         \\["\u005C"]
     );
 }
 
 test "y_string_unicode_escaped_double_quote" {
-    ok(
+    try ok(
         \\["\u0022"]
     );
 }
 
 test "y_string_unicode" {
-    ok(
+    try ok(
         \\["\uA66D"]
     );
 }
 
 test "y_string_unicode_U+10FFFE_nonchar" {
-    ok(
+    try ok(
         \\["\uDBFF\uDFFE"]
     );
 }
 
 test "y_string_unicode_U+1FFFE_nonchar" {
-    ok(
+    try ok(
         \\["\uD83F\uDFFE"]
     );
 }
 
 test "y_string_unicode_U+200B_ZERO_WIDTH_SPACE" {
-    ok(
+    try ok(
         \\["\u200B"]
     );
 }
 
 test "y_string_unicode_U+2064_invisible_plus" {
-    ok(
+    try ok(
         \\["\u2064"]
     );
 }
 
 test "y_string_unicode_U+FDD0_nonchar" {
-    ok(
+    try ok(
         \\["\uFDD0"]
     );
 }
 
 test "y_string_unicode_U+FFFE_nonchar" {
-    ok(
+    try ok(
         \\["\uFFFE"]
     );
 }
 
 test "y_string_utf8" {
-    ok(
+    try ok(
         \\["€𝄞"]
     );
 }
 
 test "y_string_with_del_character" {
-    ok("[\"a\x7fa\"]");
+    try ok("[\"a\x7fa\"]");
 }
 
 test "y_structure_lonely_false" {
-    ok(
+    try ok(
         \\false
     );
 }
 
 test "y_structure_lonely_int" {
-    ok(
+    try ok(
         \\42
     );
 }
 
 test "y_structure_lonely_negative_real" {
-    ok(
+    try ok(
         \\-0.1
     );
 }
 
 test "y_structure_lonely_null" {
-    ok(
+    try ok(
         \\null
     );
 }
 
 test "y_structure_lonely_string" {
-    ok(
+    try ok(
         \\"asd"
     );
 }
 
 test "y_structure_lonely_true" {
-    ok(
+    try ok(
         \\true
     );
 }
 
 test "y_structure_string_empty" {
-    ok(
+    try ok(
         \\""
     );
 }
 
 test "y_structure_trailing_newline" {
-    ok(
+    try ok(
         \\["a"]
     );
 }
 
 test "y_structure_true_in_array" {
-    ok(
+    try ok(
         \\[true]
     );
 }
 
 test "y_structure_whitespace_array" {
-    ok(" [] ");
+    try ok(" [] ");
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 test "n_array_1_true_without_comma" {
-    err(
+    try err(
         \\[1 true]
     );
 }
 
 test "n_array_a_invalid_utf8" {
-    err(
+    try err(
         \\[aå]
     );
 }
 
 test "n_array_colon_instead_of_comma" {
-    err(
+    try err(
         \\["": 1]
     );
 }
 
 test "n_array_comma_after_close" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\[""],
     );
 }
 
 test "n_array_comma_and_number" {
-    err(
+    try err(
         \\[,1]
     );
 }
 
 test "n_array_double_comma" {
-    err(
+    try err(
         \\[1,,2]
     );
 }
 
 test "n_array_double_extra_comma" {
-    err(
+    try err(
         \\["x",,]
     );
 }
 
 test "n_array_extra_close" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\["x"]]
     );
 }
 
 test "n_array_extra_comma" {
-    err(
+    try err(
         \\["",]
     );
 }
 
 test "n_array_incomplete_invalid_value" {
-    err(
+    try err(
         \\[x
     );
 }
 
 test "n_array_incomplete" {
-    err(
+    try err(
         \\["x"
     );
 }
 
 test "n_array_inner_array_no_comma" {
-    err(
+    try err(
         \\[3[4]]
     );
 }
 
 test "n_array_invalid_utf8" {
-    err(
+    try err(
         \\[ÿ]
     );
 }
 
 test "n_array_items_separated_by_semicolon" {
-    err(
+    try err(
         \\[1:2]
     );
 }
 
 test "n_array_just_comma" {
-    err(
+    try err(
         \\[,]
     );
 }
 
 test "n_array_just_minus" {
-    err(
+    try err(
         \\[-]
     );
 }
 
 test "n_array_missing_value" {
-    err(
+    try err(
         \\[   , ""]
     );
 }
 
 test "n_array_newlines_unclosed" {
-    err(
+    try err(
         \\["a",
         \\4
         \\,1,
@@ -820,41 +818,41 @@ test "n_array_newlines_unclosed" {
 }
 
 test "n_array_number_and_comma" {
-    err(
+    try err(
         \\[1,]
     );
 }
 
 test "n_array_number_and_several_commas" {
-    err(
+    try err(
         \\[1,,]
     );
 }
 
 test "n_array_spaces_vertical_tab_formfeed" {
-    err("[\"\x0aa\"\\f]");
+    try err("[\"\x0aa\"\\f]");
 }
 
 test "n_array_star_inside" {
-    err(
+    try err(
         \\[*]
     );
 }
 
 test "n_array_unclosed" {
-    err(
+    try err(
         \\[""
     );
 }
 
 test "n_array_unclosed_trailing_comma" {
-    err(
+    try err(
         \\[1,
     );
 }
 
 test "n_array_unclosed_with_new_lines" {
-    err(
+    try err(
         \\[1,
         \\1
         \\,1
@@ -862,958 +860,958 @@ test "n_array_unclosed_with_new_lines" {
 }
 
 test "n_array_unclosed_with_object_inside" {
-    err(
+    try err(
         \\[{}
     );
 }
 
 test "n_incomplete_false" {
-    err(
+    try err(
         \\[fals]
     );
 }
 
 test "n_incomplete_null" {
-    err(
+    try err(
         \\[nul]
     );
 }
 
 test "n_incomplete_true" {
-    err(
+    try err(
         \\[tru]
     );
 }
 
 test "n_multidigit_number_then_00" {
-    errNotAllParsed("123\x00");
+    try errNotAllParsed("123\x00");
 }
 
 test "n_number_0.1.2" {
-    err(
+    try err(
         \\[0.1.2]
     );
 }
 
 test "n_number_-01" {
-    err(
+    try err(
         \\[-01]
     );
 }
 
 test "n_number_0.3e" {
-    err(
+    try err(
         \\[0.3e]
     );
 }
 
 test "n_number_0.3e+" {
-    err(
+    try err(
         \\[0.3e+]
     );
 }
 
 test "n_number_0_capital_E" {
-    err(
+    try err(
         \\[0E]
     );
 }
 
 test "n_number_0_capital_E+" {
-    err(
+    try err(
         \\[0E+]
     );
 }
 
 test "n_number_0.e1" {
-    err(
+    try err(
         \\[0.e1]
     );
 }
 
 test "n_number_0e" {
-    err(
+    try err(
         \\[0e]
     );
 }
 
 test "n_number_0e+" {
-    err(
+    try err(
         \\[0e+]
     );
 }
 
 test "n_number_1_000" {
-    err(
+    try err(
         \\[1 000.0]
     );
 }
 
 test "n_number_1.0e-" {
-    err(
+    try err(
         \\[1.0e-]
     );
 }
 
 test "n_number_1.0e" {
-    err(
+    try err(
         \\[1.0e]
     );
 }
 
 test "n_number_1.0e+" {
-    err(
+    try err(
         \\[1.0e+]
     );
 }
 
 test "n_number_-1.0." {
-    err(
+    try err(
         \\[-1.0.]
     );
 }
 
 test "n_number_1eE2" {
-    err(
+    try err(
         \\[1eE2]
     );
 }
 
 test "n_number_.-1" {
-    err(
+    try err(
         \\[.-1]
     );
 }
 
 test "n_number_+1" {
-    err(
+    try err(
         \\[+1]
     );
 }
 
 test "n_number_.2e-3" {
-    err(
+    try err(
         \\[.2e-3]
     );
 }
 
 test "n_number_2.e-3" {
-    err(
+    try err(
         \\[2.e-3]
     );
 }
 
 test "n_number_2.e+3" {
-    err(
+    try err(
         \\[2.e+3]
     );
 }
 
 test "n_number_2.e3" {
-    err(
+    try err(
         \\[2.e3]
     );
 }
 
 test "n_number_-2." {
-    err(
+    try err(
         \\[-2.]
     );
 }
 
 test "n_number_9.e+" {
-    err(
+    try err(
         \\[9.e+]
     );
 }
 
 test "n_number_expression" {
-    err(
+    try err(
         \\[1+2]
     );
 }
 
 test "n_number_hex_1_digit" {
-    err(
+    try err(
         \\[0x1]
     );
 }
 
 test "n_number_hex_2_digits" {
-    err(
+    try err(
         \\[0x42]
     );
 }
 
 test "n_number_infinity" {
-    err(
+    try err(
         \\[Infinity]
     );
 }
 
 test "n_number_+Inf" {
-    err(
+    try err(
         \\[+Inf]
     );
 }
 
 test "n_number_Inf" {
-    err(
+    try err(
         \\[Inf]
     );
 }
 
 test "n_number_invalid+-" {
-    err(
+    try err(
         \\[0e+-1]
     );
 }
 
 test "n_number_invalid-negative-real" {
-    err(
+    try err(
         \\[-123.123foo]
     );
 }
 
 test "n_number_invalid-utf-8-in-bigger-int" {
-    err(
+    try err(
         \\[123å]
     );
 }
 
 test "n_number_invalid-utf-8-in-exponent" {
-    err(
+    try err(
         \\[1e1å]
     );
 }
 
 test "n_number_invalid-utf-8-in-int" {
-    err(
+    try err(
         \\[0å]
     );
 }
 
 test "n_number_++" {
-    err(
+    try err(
         \\[++1234]
     );
 }
 
 test "n_number_minus_infinity" {
-    err(
+    try err(
         \\[-Infinity]
     );
 }
 
 test "n_number_minus_sign_with_trailing_garbage" {
-    err(
+    try err(
         \\[-foo]
     );
 }
 
 test "n_number_minus_space_1" {
-    err(
+    try err(
         \\[- 1]
     );
 }
 
 test "n_number_-NaN" {
-    err(
+    try err(
         \\[-NaN]
     );
 }
 
 test "n_number_NaN" {
-    err(
+    try err(
         \\[NaN]
     );
 }
 
 test "n_number_neg_int_starting_with_zero" {
-    err(
+    try err(
         \\[-012]
     );
 }
 
 test "n_number_neg_real_without_int_part" {
-    err(
+    try err(
         \\[-.123]
     );
 }
 
 test "n_number_neg_with_garbage_at_end" {
-    err(
+    try err(
         \\[-1x]
     );
 }
 
 test "n_number_real_garbage_after_e" {
-    err(
+    try err(
         \\[1ea]
     );
 }
 
 test "n_number_real_with_invalid_utf8_after_e" {
-    err(
+    try err(
         \\[1eå]
     );
 }
 
 test "n_number_real_without_fractional_part" {
-    err(
+    try err(
         \\[1.]
     );
 }
 
 test "n_number_starting_with_dot" {
-    err(
+    try err(
         \\[.123]
     );
 }
 
 test "n_number_U+FF11_fullwidth_digit_one" {
-    err(
+    try err(
         \\[ï¼]
     );
 }
 
 test "n_number_with_alpha_char" {
-    err(
+    try err(
         \\[1.8011670033376514H-308]
     );
 }
 
 test "n_number_with_alpha" {
-    err(
+    try err(
         \\[1.2a-3]
     );
 }
 
 test "n_number_with_leading_zero" {
-    err(
+    try err(
         \\[012]
     );
 }
 
 test "n_object_bad_value" {
-    err(
+    try err(
         \\["x", truth]
     );
 }
 
 test "n_object_bracket_key" {
-    err(
+    try err(
         \\{[: "x"}
     );
 }
 
 test "n_object_comma_instead_of_colon" {
-    err(
+    try err(
         \\{"x", null}
     );
 }
 
 test "n_object_double_colon" {
-    err(
+    try err(
         \\{"x"::"b"}
     );
 }
 
 test "n_object_emoji" {
-    err(
+    try err(
         \\{ð¨ð­}
     );
 }
 
 test "n_object_garbage_at_end" {
-    err(
+    try err(
         \\{"a":"a" 123}
     );
 }
 
 test "n_object_key_with_single_quotes" {
-    err(
+    try err(
         \\{key: 'value'}
     );
 }
 
 test "n_object_lone_continuation_byte_in_key_and_trailing_comma" {
-    err(
+    try err(
         \\{"¹":"0",}
     );
 }
 
 test "n_object_missing_colon" {
-    err(
+    try err(
         \\{"a" b}
     );
 }
 
 test "n_object_missing_key" {
-    err(
+    try err(
         \\{:"b"}
     );
 }
 
 test "n_object_missing_semicolon" {
-    err(
+    try err(
         \\{"a" "b"}
     );
 }
 
 test "n_object_missing_value" {
-    err(
+    try err(
         \\{"a":
     );
 }
 
 test "n_object_no-colon" {
-    err(
+    try err(
         \\{"a"
     );
 }
 
 test "n_object_non_string_key_but_huge_number_instead" {
-    err(
+    try err(
         \\{9999E9999:1}
     );
 }
 
 test "n_object_non_string_key" {
-    err(
+    try err(
         \\{1:1}
     );
 }
 
 test "n_object_repeated_null_null" {
-    err(
+    try err(
         \\{null:null,null:null}
     );
 }
 
 test "n_object_several_trailing_commas" {
-    err(
+    try err(
         \\{"id":0,,,,,}
     );
 }
 
 test "n_object_single_quote" {
-    err(
+    try err(
         \\{'a':0}
     );
 }
 
 test "n_object_trailing_comma" {
-    err(
+    try err(
         \\{"id":0,}
     );
 }
 
 test "n_object_trailing_comment" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a":"b"}/**/
     );
 }
 
 test "n_object_trailing_comment_open" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a":"b"}/**//
     );
 }
 
 test "n_object_trailing_comment_slash_open_incomplete" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a":"b"}/
     );
 }
 
 test "n_object_trailing_comment_slash_open" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a":"b"}//
     );
 }
 
 test "n_object_two_commas_in_a_row" {
-    err(
+    try err(
         \\{"a":"b",,"c":"d"}
     );
 }
 
 test "n_object_unquoted_key" {
-    err(
+    try err(
         \\{a: "b"}
     );
 }
 
 test "n_object_unterminated-value" {
-    err(
+    try err(
         \\{"a":"a
     );
 }
 
 test "n_object_with_single_string" {
-    err(
+    try err(
         \\{ "foo" : "bar", "a" }
     );
 }
 
 test "n_object_with_trailing_garbage" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a":"b"}#
     );
 }
 
 test "n_single_space" {
-    err(" ");
+    try err(" ");
 }
 
 test "n_string_1_surrogate_then_escape" {
-    err(
+    try err(
         \\["\uD800\"]
     );
 }
 
 test "n_string_1_surrogate_then_escape_u1" {
-    err(
+    try err(
         \\["\uD800\u1"]
     );
 }
 
 test "n_string_1_surrogate_then_escape_u1x" {
-    err(
+    try err(
         \\["\uD800\u1x"]
     );
 }
 
 test "n_string_1_surrogate_then_escape_u" {
-    err(
+    try err(
         \\["\uD800\u"]
     );
 }
 
 test "n_string_accentuated_char_no_quotes" {
-    err(
+    try err(
         \\[Ã©]
     );
 }
 
 test "n_string_backslash_00" {
-    err("[\"\x00\"]");
+    try err("[\"\x00\"]");
 }
 
 test "n_string_escaped_backslash_bad" {
-    err(
+    try err(
         \\["\\\"]
     );
 }
 
 test "n_string_escaped_ctrl_char_tab" {
-    err("\x5b\x22\x5c\x09\x22\x5d");
+    try err("\x5b\x22\x5c\x09\x22\x5d");
 }
 
 test "n_string_escaped_emoji" {
-    err("[\"\x5c\xc3\xb0\xc2\x9f\xc2\x8c\xc2\x80\"]");
+    try err("[\"\x5c\xc3\xb0\xc2\x9f\xc2\x8c\xc2\x80\"]");
 }
 
 test "n_string_escape_x" {
-    err(
+    try err(
         \\["\x00"]
     );
 }
 
 test "n_string_incomplete_escaped_character" {
-    err(
+    try err(
         \\["\u00A"]
     );
 }
 
 test "n_string_incomplete_escape" {
-    err(
+    try err(
         \\["\"]
     );
 }
 
 test "n_string_incomplete_surrogate_escape_invalid" {
-    err(
+    try err(
         \\["\uD800\uD800\x"]
     );
 }
 
 test "n_string_incomplete_surrogate" {
-    err(
+    try err(
         \\["\uD834\uDd"]
     );
 }
 
 test "n_string_invalid_backslash_esc" {
-    err(
+    try err(
         \\["\a"]
     );
 }
 
 test "n_string_invalid_unicode_escape" {
-    err(
+    try err(
         \\["\uqqqq"]
     );
 }
 
 test "n_string_invalid_utf8_after_escape" {
-    err("[\"\\\x75\xc3\xa5\"]");
+    try err("[\"\\\x75\xc3\xa5\"]");
 }
 
 test "n_string_invalid-utf-8-in-escape" {
-    err(
+    try err(
         \\["\uå"]
     );
 }
 
 test "n_string_leading_uescaped_thinspace" {
-    err(
+    try err(
         \\[\u0020"asd"]
     );
 }
 
 test "n_string_no_quotes_with_bad_escape" {
-    err(
+    try err(
         \\[\n]
     );
 }
 
 test "n_string_single_doublequote" {
-    err(
+    try err(
         \\"
     );
 }
 
 test "n_string_single_quote" {
-    err(
+    try err(
         \\['single quote']
     );
 }
 
 test "n_string_single_string_no_double_quotes" {
-    err(
+    try err(
         \\abc
     );
 }
 
 test "n_string_start_escape_unclosed" {
-    err(
+    try err(
         \\["\
     );
 }
 
 test "n_string_unescaped_crtl_char" {
-    err("[\"a\x00a\"]");
+    try err("[\"a\x00a\"]");
 }
 
 test "n_string_unescaped_newline" {
-    err(
+    try err(
         \\["new
         \\line"]
     );
 }
 
 test "n_string_unescaped_tab" {
-    err("[\"\t\"]");
+    try err("[\"\t\"]");
 }
 
 test "n_string_unicode_CapitalU" {
-    err(
+    try err(
         \\"\UA66D"
     );
 }
 
 test "n_string_with_trailing_garbage" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\""x
     );
 }
 
 test "n_structure_100000_opening_arrays" {
     return error.SkipZigTest;
-    // err("[" ** 100000);
+    // try err("[" ** 100000);
 }
 
 test "n_structure_angle_bracket_." {
-    err(
+    try err(
         \\<.>
     );
 }
 
 test "n_structure_angle_bracket_null" {
-    err(
+    try err(
         \\[<null>]
     );
 }
 
 test "n_structure_array_trailing_garbage" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\[1]x
     );
 }
 
 test "n_structure_array_with_extra_array_close" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\[1]]
     );
 }
 
 test "n_structure_array_with_unclosed_string" {
-    err(
+    try err(
         \\["asd]
     );
 }
 
 test "n_structure_ascii-unicode-identifier" {
-    err(
+    try err(
         \\aÃ¥
     );
 }
 
 test "n_structure_capitalized_True" {
-    err(
+    try err(
         \\[True]
     );
 }
 
 test "n_structure_close_unopened_array" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\1]
     );
 }
 
 test "n_structure_comma_instead_of_closing_brace" {
-    err(
+    try err(
         \\{"x": true,
     );
 }
 
 test "n_structure_double_array" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\[][]
     );
 }
 
 test "n_structure_end_array" {
-    err(
+    try err(
         \\]
     );
 }
 
 test "n_structure_incomplete_UTF8_BOM" {
-    err(
+    try err(
         \\ï»{}
     );
 }
 
 test "n_structure_lone-invalid-utf-8" {
-    err(
+    try err(
         \\å
     );
 }
 
 test "n_structure_lone-open-bracket" {
-    err(
+    try err(
         \\[
     );
 }
 
 test "n_structure_no_data" {
-    err(
+    try err(
         \\
     );
 }
 
 test "n_structure_null-byte-outside-string" {
-    err("[\x00]");
+    try err("[\x00]");
 }
 
 test "n_structure_number_with_trailing_garbage" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\2@
     );
 }
 
 test "n_structure_object_followed_by_closing_object" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{}}
     );
 }
 
 test "n_structure_object_unclosed_no_value" {
-    err(
+    try err(
         \\{"":
     );
 }
 
 test "n_structure_object_with_comment" {
-    err(
+    try err(
         \\{"a":/*comment*/"b"}
     );
 }
 
 test "n_structure_object_with_trailing_garbage" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a": true} "x"
     );
 }
 
 test "n_structure_open_array_apostrophe" {
-    err(
+    try err(
         \\['
     );
 }
 
 test "n_structure_open_array_comma" {
-    err(
+    try err(
         \\[,
     );
 }
 
 test "n_structure_open_array_object" {
     return error.SkipZigTest;
-    // err("[{\"\":" ** 50000);
+    // try err("[{\"\":" ** 50000);
 }
 
 test "n_structure_open_array_open_object" {
-    err(
+    try err(
         \\[{
     );
 }
 
 test "n_structure_open_array_open_string" {
-    err(
+    try err(
         \\["a
     );
 }
 
 test "n_structure_open_array_string" {
-    err(
+    try err(
         \\["a"
     );
 }
 
 test "n_structure_open_object_close_array" {
-    err(
+    try err(
         \\{]
     );
 }
 
 test "n_structure_open_object_comma" {
-    err(
+    try err(
         \\{,
     );
 }
 
 test "n_structure_open_object" {
-    err(
+    try err(
         \\{
     );
 }
 
 test "n_structure_open_object_open_array" {
-    err(
+    try err(
         \\{[
     );
 }
 
 test "n_structure_open_object_open_string" {
-    err(
+    try err(
         \\{"a
     );
 }
 
 test "n_structure_open_object_string_with_apostrophes" {
-    err(
+    try err(
         \\{'a'
     );
 }
 
 test "n_structure_open_open" {
-    err(
+    try err(
         \\["\{["\{["\{["\{
     );
 }
 
 test "n_structure_single_eacute" {
-    err(
+    try err(
         \\é
     );
 }
 
 test "n_structure_single_star" {
-    err(
+    try err(
         \\*
     );
 }
 
 test "n_structure_trailing_#" {
-    errNotAllParsed(
+    try errNotAllParsed(
         \\{"a":"b"}#{}
     );
 }
 
 test "n_structure_U+2060_word_joined" {
-    err(
+    try err(
         \\[â ]
     );
 }
 
 test "n_structure_uescaped_LF_before_string" {
-    err(
+    try err(
         \\[\u000A""]
     );
 }
 
 test "n_structure_unclosed_array" {
-    err(
+    try err(
         \\[1
     );
 }
 
 test "n_structure_unclosed_array_partial_null" {
-    err(
+    try err(
         \\[ false, nul
     );
 }
 
 test "n_structure_unclosed_array_unfinished_false" {
-    err(
+    try err(
         \\[ true, fals
     );
 }
 
 test "n_structure_unclosed_array_unfinished_true" {
-    err(
+    try err(
         \\[ false, tru
     );
 }
 
 test "n_structure_unclosed_object" {
-    err(
+    try err(
         \\{"asd":"asd"
     );
 }
 
 test "n_structure_unicode-identifier" {
-    err(
+    try err(
         \\Ã¥
     );
 }
 
 test "n_structure_UTF8_BOM_no_data" {
-    err(
+    try err(
         \\ï»¿
     );
 }
 
 test "n_structure_whitespace_formfeed" {
-    err("[\x0c]");
+    try err("[\x0c]");
 }
 
 test "n_structure_whitespace_U+2060_word_joiner" {
-    err(
+    try err(
         \\[â ]
     );
 }
@@ -2023,53 +2021,53 @@ test "i_structure_UTF-8_BOM_empty_object" {
 }
 
 test "truncated UTF-8 sequence" {
-    err("\"\xc2\"");
-    err("\"\xdf\"");
-    err("\"\xed\xa0\"");
-    err("\"\xf0\x80\"");
-    err("\"\xf0\x80\x80\"");
+    try err("\"\xc2\"");
+    try err("\"\xdf\"");
+    try err("\"\xed\xa0\"");
+    try err("\"\xf0\x80\"");
+    try err("\"\xf0\x80\x80\"");
 }
 
 test "invalid continuation byte" {
-    err("\"\xc2\x00\"");
-    err("\"\xc2\x7f\"");
-    err("\"\xc2\xc0\"");
-    err("\"\xc3\xc1\"");
-    err("\"\xc4\xf5\"");
-    err("\"\xc5\xff\"");
-    err("\"\xe4\x80\x00\"");
-    err("\"\xe5\x80\x10\"");
-    err("\"\xe6\x80\xc0\"");
-    err("\"\xe7\x80\xf5\"");
-    err("\"\xe8\x00\x80\"");
-    err("\"\xf2\x00\x80\x80\"");
-    err("\"\xf0\x80\x00\x80\"");
-    err("\"\xf1\x80\xc0\x80\"");
-    err("\"\xf2\x80\x80\x00\"");
-    err("\"\xf3\x80\x80\xc0\"");
-    err("\"\xf4\x80\x80\xf5\"");
+    try err("\"\xc2\x00\"");
+    try err("\"\xc2\x7f\"");
+    try err("\"\xc2\xc0\"");
+    try err("\"\xc3\xc1\"");
+    try err("\"\xc4\xf5\"");
+    try err("\"\xc5\xff\"");
+    try err("\"\xe4\x80\x00\"");
+    try err("\"\xe5\x80\x10\"");
+    try err("\"\xe6\x80\xc0\"");
+    try err("\"\xe7\x80\xf5\"");
+    try err("\"\xe8\x00\x80\"");
+    try err("\"\xf2\x00\x80\x80\"");
+    try err("\"\xf0\x80\x00\x80\"");
+    try err("\"\xf1\x80\xc0\x80\"");
+    try err("\"\xf2\x80\x80\x00\"");
+    try err("\"\xf3\x80\x80\xc0\"");
+    try err("\"\xf4\x80\x80\xf5\"");
 }
 
 test "disallowed overlong form" {
-    err("\"\xc0\x80\"");
-    err("\"\xc0\x90\"");
-    err("\"\xc1\x80\"");
-    err("\"\xc1\x90\"");
-    err("\"\xe0\x80\x80\"");
-    err("\"\xf0\x80\x80\x80\"");
+    try err("\"\xc0\x80\"");
+    try err("\"\xc0\x90\"");
+    try err("\"\xc1\x80\"");
+    try err("\"\xc1\x90\"");
+    try err("\"\xe0\x80\x80\"");
+    try err("\"\xf0\x80\x80\x80\"");
 }
 
 test "out of UTF-16 range" {
-    err("\"\xf4\x90\x80\x80\"");
-    err("\"\xf5\x80\x80\x80\"");
-    err("\"\xf6\x80\x80\x80\"");
-    err("\"\xf7\x80\x80\x80\"");
-    err("\"\xf8\x80\x80\x80\"");
-    err("\"\xf9\x80\x80\x80\"");
-    err("\"\xfa\x80\x80\x80\"");
-    err("\"\xfb\x80\x80\x80\"");
-    err("\"\xfc\x80\x80\x80\"");
-    err("\"\xfd\x80\x80\x80\"");
-    err("\"\xfe\x80\x80\x80\"");
-    err("\"\xff\x80\x80\x80\"");
+    try err("\"\xf4\x90\x80\x80\"");
+    try err("\"\xf5\x80\x80\x80\"");
+    try err("\"\xf6\x80\x80\x80\"");
+    try err("\"\xf7\x80\x80\x80\"");
+    try err("\"\xf8\x80\x80\x80\"");
+    try err("\"\xf9\x80\x80\x80\"");
+    try err("\"\xfa\x80\x80\x80\"");
+    try err("\"\xfb\x80\x80\x80\"");
+    try err("\"\xfc\x80\x80\x80\"");
+    try err("\"\xfd\x80\x80\x80\"");
+    try err("\"\xfe\x80\x80\x80\"");
+    try err("\"\xff\x80\x80\x80\"");
 }

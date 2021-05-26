@@ -1,98 +1,86 @@
-const std = @import("std");
 const mecha = @import("../mecha.zig");
+const std = @import("std");
 
+const ascii = std.ascii;
 const debug = std.debug;
 const math = std.math;
+const mem = std.mem;
+const testing = std.testing;
 
-/// Constructs a parser that only succeeds if the string starts with `i`.
-pub fn char(comptime i: u8) mecha.Parser(void) {
-    comptime {
-        return mecha.string(&[_]u8{i});
-    }
-}
-
-test "char" {
-    mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')("a"));
-    mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')("aa"));
-    mecha.expectResult(void, null, char('a')("ba"));
-    mecha.expectResult(void, null, char('a')(""));
-}
-
-/// Constructs a parser that only succeeds if the string starts with
-/// a codepoint that is in between `start` and `end` inclusively.
-/// The parsers result will be the codepoint parsed.
-pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
+/// Constructs a parser that parses a single ascii bytes based on
+/// a `predicate`. If the `predicate` returns true, the parser will
+/// return the byte parsed and the rest of the string. Otherwise
+/// the parser will fail.
+pub fn wrap(comptime predicate: fn (u8) bool) mecha.Parser(u8) {
+    const Res = mecha.Result(u8);
     return struct {
-        const Res = mecha.Result(u8);
-        fn func(str: []const u8) ?Res {
-            if (str.len == 0)
-                return null;
-
-            switch (str[0]) {
-                start...end => return Res.init(str[0], str[1..]),
-                else => return null,
-            }
+        fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
+            if (str.len == 0 or !predicate(str[0]))
+                return error.ParserFailed;
+            return Res{ .value = str[0], .rest = str[1..] };
         }
     }.func;
 }
 
-test "range" {
-    mecha.expectResult(u8, .{ .value = 'a', .rest = "" }, range('a', 'z')("a"));
-    mecha.expectResult(u8, .{ .value = 'i', .rest = "" }, range('a', 'z')("i"));
-    mecha.expectResult(u8, .{ .value = 'z', .rest = "" }, range('a', 'z')("z"));
-    mecha.expectResult(u8, .{ .value = 'a', .rest = "a" }, range('a', 'z')("aa"));
-    mecha.expectResult(u8, .{ .value = 'c', .rest = "a" }, range('a', 'z')("ca"));
-    mecha.expectResult(u8, .{ .value = 'z', .rest = "a" }, range('a', 'z')("za"));
-    mecha.expectResult(u8, null, range('a', 'z')("1"));
-    mecha.expectResult(u8, null, range('a', 'z')(""));
+/// Constructs a parser that only succeeds if the string starts with `i`.
+pub fn char(comptime i: u8) mecha.Parser(void) {
+    return comptime mecha.discard(range(i, i));
 }
 
-/// A parser that succeeds if the string starts with an upper case
-/// character. The parsers result will be the character parsed.
-pub const upper = mecha.oneOf(.{range('A', 'Z')});
-
-test "upper" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            'A'...'Z' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, upper(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, upper(&[_]u8{i})),
-        }
+test "char" {
+    inline for ([_]void{{}} ** 255) |_, i| {
+        const c = comptime @intCast(u8, i);
+        try testWithPredicate(char(c), rangePred(c, c));
     }
 }
 
-/// A parser that succeeds if the string starts with an upper case
-/// character. The parsers result will be the character parsed.
-pub const lower = mecha.oneOf(.{range('a', 'z')});
-
-test "lower" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            'a'...'z' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, lower(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, lower(&[_]u8{i})),
+pub fn rangePred(comptime start: u8, comptime end: u8) fn (u8) bool {
+    return struct {
+        fn pred(c: u8) bool {
+            return switch (c) {
+                start...end => true,
+                else => false,
+            };
         }
-    }
+    }.pred;
 }
 
-/// A parser that succeeds if the string starts with an alphabetic
-/// character. The parsers result will be the character parsed.
-pub const alpha = mecha.oneOf(.{ lower, upper });
+/// Constructs a parser that only succeeds if the string starts with
+/// a codepoint that is in between `start` and `end` inclusively.
+/// The parser's result will be the codepoint parsed.
+pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
+    return wrap(comptime rangePred(start, end));
+}
 
-test "alpha" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            'a'...'z',
-            'A'...'Z',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, alpha(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, alpha(&[_]u8{i})),
+/// Creates a parser that succeeds and parses one ascii character if
+/// `parser` fails to parse the input string.
+pub fn not(comptime parser: anytype) mecha.Parser(u8) {
+    const Res = mecha.Result(u8);
+    return struct {
+        fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
+            if (str.len == 0)
+                return error.ParserFailed;
+
+            _ = parser(allocator, str) catch |e| switch (e) {
+                error.ParserFailed => return Res{ .value = str[0], .rest = str[1..] },
+                else => return e,
+            };
+
+            return error.ParserFailed;
         }
-    }
+    }.res;
+}
+
+test "not" {
+    try testWithPredicate(not(alpha), struct {
+        fn pred(c: u8) bool {
+            return !ascii.isAlpha(c);
+        }
+    }.pred);
 }
 
 /// Construct a parser that succeeds if the string starts with a
-/// character that is a digit in `base`. The parsers result will be
+/// character that is a digit in `base`. The parser's result will be
 /// the character parsed.
 pub fn digit(comptime base: u8) mecha.Parser(u8) {
     debug.assert(base != 0);
@@ -106,150 +94,70 @@ pub fn digit(comptime base: u8) mecha.Parser(u8) {
 }
 
 test "digit" {
-    var i: u8 = 0;
-    i = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            '0'...'1' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(2)(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, digit(2)(&[_]u8{i})),
+    try testWithPredicate(digit(2), struct {
+        fn pred(c: u8) bool {
+            return switch (c) {
+                '0'...'1' => true,
+                else => false,
+            };
         }
-    }
-
-    i = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            '0'...'9' => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(10)(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, digit(10)(&[_]u8{i})),
+    }.pred);
+    try testWithPredicate(digit(10), struct {
+        fn pred(c: u8) bool {
+            return switch (c) {
+                '0'...'9' => true,
+                else => false,
+            };
         }
-    }
-    i = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            '0'...'9',
-            'a'...'f',
-            'A'...'F',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, digit(16)(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, digit(16)(&[_]u8{i})),
+    }.pred);
+    try testWithPredicate(digit(16), struct {
+        fn pred(c: u8) bool {
+            return switch (c) {
+                '0'...'9', 'a'...'f', 'A'...'F' => true,
+                else => false,
+            };
         }
-    }
+    }.pred);
 }
 
-/// A parser that succeeds if the string starts with an alphabetic
-/// or numeric character. The parsers result will be the character parsed.
-pub const alphanum = mecha.oneOf(.{ alpha, digit(10) });
+pub const alpha = wrap(ascii.isAlpha);
+pub const alphanum = wrap(ascii.isAlNum);
+pub const blank = wrap(ascii.isBlank);
+pub const cntrl = wrap(ascii.isCntrl);
+pub const graph = wrap(ascii.isGraph);
+pub const lower = wrap(ascii.isLower);
+pub const print = wrap(ascii.isPrint);
+pub const punct = wrap(ascii.isPunct);
+pub const space = wrap(ascii.isSpace);
+pub const upper = wrap(ascii.isUpper);
+pub const valid = wrap(ascii.isASCII);
 
-test "alphanum" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            'a'...'z',
-            'A'...'Z',
-            '0'...'9',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, alphanum(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, alphanum(&[_]u8{i})),
-        }
-    }
+test "" {
+    try testWithPredicate(alpha, ascii.isAlpha);
+    try testWithPredicate(alphanum, ascii.isAlNum);
+    try testWithPredicate(blank, ascii.isBlank);
+    try testWithPredicate(cntrl, ascii.isCntrl);
+    try testWithPredicate(graph, ascii.isGraph);
+    try testWithPredicate(lower, ascii.isLower);
+    try testWithPredicate(print, ascii.isPrint);
+    try testWithPredicate(punct, ascii.isPunct);
+    try testWithPredicate(space, ascii.isSpace);
+    try testWithPredicate(upper, ascii.isUpper);
+    try testWithPredicate(valid, ascii.isASCII);
 }
 
-pub const cntrl = mecha.oneOf(.{
-    range(0, 0x19),
-    range(127, 127),
-});
-
-test "cntrl" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            0...0x19, 127 => mecha.expectResult(u8, .{ .value = i, .rest = "" }, cntrl(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, cntrl(&[_]u8{i})),
-        }
-    }
-}
-
-pub const graph = range(0x21, 0x7e);
-
-test "graph" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            0x21...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, graph(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, graph(&[_]u8{i})),
-        }
-    }
-}
-
-pub const print = range(0x20, 0x7e);
-
-test "print" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, print(&[_]u8{i})),
-        }
-    }
-}
-
-pub const space = mecha.oneOf(.{
-    range(' ', ' '),
-    range('\t', 0x0c),
-});
-
-test "print" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            0x20...0x7e => mecha.expectResult(u8, .{ .value = i, .rest = "" }, print(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, print(&[_]u8{i})),
-        }
-    }
-}
-
-pub const punct = mecha.oneOf(.{
-    range('!', '/'),
-    range(':', '@'),
-    range('[', '`'),
-    range('{', '~'),
-});
-
-test "punct" {
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            '!'...'/',
-            ':'...'@',
-            '['...'`',
-            '{'...'~',
-            => mecha.expectResult(u8, .{ .value = i, .rest = "" }, punct(&[_]u8{i})),
-            else => mecha.expectResult(u8, null, punct(&[_]u8{i})),
-        }
-    }
-}
-
-/// Creates a parser that succeeds and parses one ascii character if
-/// `parser` fails to parse the input string.
-pub fn not(comptime parser: anytype) mecha.Parser(u8) {
-    return struct {
-        const Res = mecha.Result(u8);
-        fn res(str: []const u8) ?Res {
-            if (str.len == 0)
-                return null;
-            if (parser(str)) |_|
-                return null;
-            return Res.init(str[0], str[1..]);
-        }
-    }.res;
-}
-
-test "not" {
-    const p = not(alpha);
-    var i: u8 = 0;
-    while (i <= math.maxInt(u7)) : (i += 1) {
-        switch (i) {
-            'a'...'z',
-            'A'...'Z',
-            => mecha.expectResult(u8, null, p(&[_]u8{i})),
-            else => mecha.expectResult(u8, .{ .value = i, .rest = "" }, p(&[_]u8{i})),
+fn testWithPredicate(parser: anytype, pred: fn (u8) bool) !void {
+    const allocator = testing.failing_allocator;
+    for ([_]void{{}} ** 255) |_, i| {
+        const c = comptime @intCast(u8, i);
+        if (pred(c)) switch (@TypeOf(parser)) {
+            mecha.Parser(u8) => try mecha.expectResult(u8, .{ .value = c }, parser(allocator, &[_]u8{c})),
+            mecha.Parser(void) => try mecha.expectResult(void, .{ .value = {} }, parser(allocator, &[_]u8{c})),
+            else => comptime unreachable,
+        } else switch (@TypeOf(parser)) {
+            mecha.Parser(u8) => try mecha.expectResult(u8, error.ParserFailed, parser(allocator, &[_]u8{c})),
+            mecha.Parser(void) => try mecha.expectResult(void, error.ParserFailed, parser(allocator, &[_]u8{c})),
+            else => comptime unreachable,
         }
     }
 }

@@ -1,7 +1,13 @@
 name: CI
 on:
   push:
+<<<<<<< HEAD
   pull_request:
+=======
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+>>>>>>> master
 
 jobs:
   test:

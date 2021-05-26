@@ -1,7 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const Mode = builtin.Mode;
 const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
@@ -9,8 +8,9 @@ pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
 
     const test_all_step = b.step("test", "Run all tests in all modes.");
-    inline for ([_]Mode{ Mode.Debug, Mode.ReleaseFast, Mode.ReleaseSafe, Mode.ReleaseSmall }) |test_mode| {
-        const mode_str = comptime modeToString(test_mode);
+    inline for (@typeInfo(std.builtin.Mode).Enum.fields) |field| {
+        const test_mode = @field(std.builtin.Mode, field.name);
+        const mode_str = @tagName(test_mode);
 
         const test_step = b.step("test-" ++ mode_str, "Run all tests in " ++ mode_str ++ ".");
         test_all_step.dependOn(test_step);
@@ -24,7 +24,6 @@ pub fn build(b: *Builder) void {
             tests.addPackagePath("mecha", "mecha.zig");
             tests.setBuildMode(test_mode);
             tests.setTarget(target);
-            tests.setNamePrefix(mode_str ++ " ");
             test_step.dependOn(&tests.step);
         }
     }
@@ -46,20 +45,11 @@ fn readMeStep(b: *Builder) *std.build.Step {
         fn make(step: *std.build.Step) anyerror!void {
             @setEvalBranchQuota(10000);
             const file = try std.fs.cwd().createFile("README.md", .{});
-            const writer = &file.writer();
+            const writer = file.writer();
             try writer.print(@embedFile("example/README.md.template"), .{
                 @embedFile("example/rgb.zig"),
             });
         }
     }.make);
     return s;
-}
-
-fn modeToString(mode: Mode) []const u8 {
-    return switch (mode) {
-        Mode.Debug => "debug",
-        Mode.ReleaseFast => "release-fast",
-        Mode.ReleaseSafe => "release-safe",
-        Mode.ReleaseSmall => "release-small",
-    };
 }

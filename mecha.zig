@@ -528,7 +528,7 @@ test "convert" {
     try expectResult(f32, .{ .value = 1.23, .rest = "a" }, parser4(allocator, "1.23a"));
     try expectResult(f32, error.ParserFailed, parser4(allocator, "1.2"));
 
-    const E = packed enum(u8) { a, b, _ };
+    const E = enum(u8) { a, b, _ };
     const parser5 = comptime convert(E, toEnum(E), rest);
     try expectResult(E, .{ .value = E.a }, parser5(allocator, "a"));
     try expectResult(E, .{ .value = E.b }, parser5(allocator, "b"));
@@ -559,7 +559,7 @@ pub fn map(
 
 fn ToStructResult(comptime T: type) type {
     return @TypeOf(struct {
-        fn func(tuple: anytype) T {
+        fn func(_: anytype) T {
             return undefined;
         }
     }.func);

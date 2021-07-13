@@ -4,7 +4,6 @@ const std = @import("std");
 const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
-    const mode = b.standardReleaseOptions();
     const target = b.standardTargetOptions(.{});
 
     const test_all_step = b.step("test", "Run all tests in all modes.");
@@ -41,8 +40,8 @@ pub fn build(b: *Builder) void {
 
 fn readMeStep(b: *Builder) *std.build.Step {
     const s = b.allocator.create(std.build.Step) catch unreachable;
-    s.* = std.build.Step.init(.Custom, "ReadMeStep", b.allocator, struct {
-        fn make(step: *std.build.Step) anyerror!void {
+    s.* = std.build.Step.init(.custom, "ReadMeStep", b.allocator, struct {
+        fn make(_: *std.build.Step) anyerror!void {
             @setEvalBranchQuota(10000);
             const file = try std.fs.cwd().createFile("README.md", .{});
             const writer = file.writer();

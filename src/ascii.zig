@@ -120,8 +120,8 @@ test "digit" {
     }.pred);
 }
 
-pub const alpha = wrap(ascii.isAlpha);
 pub const alphanum = wrap(ascii.isAlNum);
+pub const alpha = wrap(ascii.isAlpha);
 pub const blank = wrap(ascii.isBlank);
 pub const cntrl = wrap(ascii.isCntrl);
 pub const graph = wrap(ascii.isGraph);

@@ -33,7 +33,7 @@ pub fn Parser(comptime T: type) type {
 }
 
 pub fn ParserWithCC(comptime T: type, comptime cc: std.builtin.CallingConvention) type {
-    return fn (*mem.Allocator, []const u8) callconv(cc) Error!Result(T);
+    return fn (mem.Allocator, []const u8) callconv(cc) Error!Result(T);
 }
 
 fn typecheckParser(comptime P: type) void {
@@ -65,12 +65,12 @@ pub fn ParserResult(comptime P: type) type {
 
 /// A parser that always succeeds and parses nothing. This parser
 /// is only really useful for generic code. See `many`.
-pub fn noop(_: *mem.Allocator, str: []const u8) Error!Void {
+pub fn noop(_: mem.Allocator, str: []const u8) Error!Void {
     return Void{ .value = {}, .rest = str };
 }
 
 /// A parser that only succeeds on the end of the string.
-pub fn eos(_: *mem.Allocator, str: []const u8) Error!Void {
+pub fn eos(_: mem.Allocator, str: []const u8) Error!Void {
     if (str.len != 0)
         return error.ParserFailed;
     return Void{ .value = {}, .rest = str };
@@ -84,7 +84,7 @@ test "eos" {
 
 /// A parser that always succeeds with the result being the
 /// entire string. The same as the '.*$' regex.
-pub fn rest(_: *mem.Allocator, str: []const u8) Error!Result([]const u8) {
+pub fn rest(_: mem.Allocator, str: []const u8) Error!Result([]const u8) {
     return Result([]const u8){ .value = str, .rest = str[str.len..] };
 }
 
@@ -98,7 +98,7 @@ test "rest" {
 /// with `str`.
 pub fn string(comptime str: []const u8) Parser(void) {
     return struct {
-        fn func(_: *mem.Allocator, s: []const u8) Error!Void {
+        fn func(_: mem.Allocator, s: []const u8) Error!Void {
             if (!mem.startsWith(u8, s, str))
                 return error.ParserFailed;
             return Void{ .value = {}, .rest = s[str.len..] };
@@ -130,7 +130,7 @@ pub fn manyN(
     const Array = [n]ParserResult(@TypeOf(parser));
     const Res = Result(Array);
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             var rem = str;
             var res: Array = undefined;
             for (res) |*value, i| {
@@ -192,7 +192,7 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
     typecheckParser(ElementParser);
 
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             var res = if (options.collect)
                 try std.ArrayList(Element).initCapacity(allocator, options.min)
             else {};
@@ -271,7 +271,7 @@ test "many" {
 pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     const Res = Result(?ParserResult(@TypeOf(parser)));
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             const r = parser(allocator, str) catch |e| switch (e) {
                 error.ParserFailed => return Res{ .value = null, .rest = str },
                 else => return e,
@@ -325,7 +325,7 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
     const types = parsersTypes(parsers);
     const Res = Result(Combine(parsers));
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             var res: Res = undefined;
             res.rest = str;
 
@@ -375,7 +375,7 @@ pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))
         typecheckParser(@TypeOf(parser));
 
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Result(ParserResult(@TypeOf(parsers[0]))) {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Result(ParserResult(@TypeOf(parsers[0]))) {
             inline for (parsers) |p| {
                 if (p(allocator, str)) |res| {
                     return res;
@@ -412,7 +412,7 @@ pub fn asStr(comptime parser: anytype) Parser([]const u8) {
     const Res = Result([]const u8);
     typecheckParser(@TypeOf(parser));
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             const r = try parser(allocator, str);
             return Res{ .value = str[0 .. str.len - r.rest.len], .rest = r.rest };
         }
@@ -435,7 +435,7 @@ test "asStr" {
 
 /// Constructs a parser that has its result converted with the
 /// `conv` function. The ´conv` functions signature is
-/// `fn (*mem.Allocator, ParserResult(parser)) !T`.
+/// `fn (mem.Allocator, ParserResult(parser)) !T`.
 /// The parser constructed will fail if `conv` fails.
 pub fn convert(
     comptime T: type,
@@ -444,7 +444,7 @@ pub fn convert(
 ) Parser(T) {
     const Res = Result(T);
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             const r = try parser(allocator, str);
             const v = conv(allocator, r.value) catch |e| switch (@as(anyerror, e)) {
                 error.ParserFailed => return error.ParserFailed,
@@ -458,9 +458,9 @@ pub fn convert(
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to an int of type `Int`.
-pub fn toInt(comptime Int: type, comptime base: u8) fn (*mem.Allocator, []const u8) Error!Int {
+pub fn toInt(comptime Int: type, comptime base: u8) fn (mem.Allocator, []const u8) Error!Int {
     return struct {
-        fn func(_: *mem.Allocator, str: []const u8) Error!Int {
+        fn func(_: mem.Allocator, str: []const u8) Error!Int {
             return fmt.parseInt(Int, str, base) catch error.ParserFailed;
         }
     }.func;
@@ -468,9 +468,9 @@ pub fn toInt(comptime Int: type, comptime base: u8) fn (*mem.Allocator, []const 
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to a float of type `Float`.
-pub fn toFloat(comptime Float: type) fn (*mem.Allocator, []const u8) Error!Float {
+pub fn toFloat(comptime Float: type) fn (mem.Allocator, []const u8) Error!Float {
     return struct {
-        fn func(_: *mem.Allocator, str: []const u8) Error!Float {
+        fn func(_: mem.Allocator, str: []const u8) Error!Float {
             return fmt.parseFloat(Float, str) catch error.ParserFailed;
         }
     }.func;
@@ -478,7 +478,7 @@ pub fn toFloat(comptime Float: type) fn (*mem.Allocator, []const u8) Error!Float
 
 /// A convert function for `convert` that takes a string and
 /// returns the first codepoint.
-pub fn toChar(_: *mem.Allocator, str: []const u8) anyerror!u21 {
+pub fn toChar(_: mem.Allocator, str: []const u8) anyerror!u21 {
     if (str.len > 1) {
         const cp_len = try unicode.utf8ByteSequenceLength(str[0]);
         if (cp_len > str.len)
@@ -490,9 +490,9 @@ pub fn toChar(_: *mem.Allocator, str: []const u8) anyerror!u21 {
 
 /// Constructs a convert function for `convert` that takes a
 /// string and converts it to an `Enum` with `std.meta.stringToEnum`.
-pub fn toEnum(comptime Enum: type) fn (*mem.Allocator, []const u8) Error!Enum {
+pub fn toEnum(comptime Enum: type) fn (mem.Allocator, []const u8) Error!Enum {
     return struct {
-        fn func(_: *mem.Allocator, str: []const u8) Error!Enum {
+        fn func(_: mem.Allocator, str: []const u8) Error!Enum {
             return std.meta.stringToEnum(Enum, str) orelse error.ParserFailed;
         }
     }.func;
@@ -501,7 +501,7 @@ pub fn toEnum(comptime Enum: type) fn (*mem.Allocator, []const u8) Error!Enum {
 /// A convert function for `convert` that takes a string
 /// and returns `true` if it is `"true"` and `false` if it
 /// is `"false"`.
-pub fn toBool(allocator: *mem.Allocator, str: []const u8) Error!bool {
+pub fn toBool(allocator: mem.Allocator, str: []const u8) Error!bool {
     const r = try toEnum(enum { @"false", @"true" })(allocator, str);
     return r == .@"true";
 }
@@ -550,7 +550,7 @@ pub fn map(
     const Res = Result(T);
     typecheckParser(@TypeOf(parser));
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             const r = try parser(allocator, str);
             return Res{ .value = conv(r.value), .rest = r.rest };
         }
@@ -665,7 +665,7 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
     const Res = Result(Int);
 
     return struct {
-        fn intParser(_: *mem.Allocator, str: []const u8) Error!Res {
+        fn intParser(_: mem.Allocator, str: []const u8) Error!Res {
             if (options.parse_sign and str.len != 0) {
                 switch (str[0]) {
                     '+' => return parseAfterSign(str[1..], add),
@@ -754,7 +754,7 @@ test "int" {
 pub fn enumeration(comptime Enum: type) Parser(Enum) {
     const Res = Result(Enum);
     return struct {
-        fn func(allocator: *mem.Allocator, str: []const u8) Error!Res {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             var res: Error!Res = error.ParserFailed;
             inline for (@typeInfo(Enum).Enum.fields) |field| next: {
                 const p = comptime string(field.name);
@@ -797,7 +797,7 @@ pub fn ref(comptime func: anytype) Parser(ParserResult(ReturnType(@TypeOf(func))
     const P = ReturnType(@TypeOf(func));
     const T = ParserResult(P);
     return struct {
-        fn res(allocator: *mem.Allocator, str: []const u8) Error!Result(T) {
+        fn res(allocator: mem.Allocator, str: []const u8) Error!Result(T) {
             return func()(allocator, str);
         }
     }.res;

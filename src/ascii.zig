@@ -14,7 +14,7 @@ const testing = std.testing;
 pub fn wrap(comptime predicate: fn (u8) bool) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
     return struct {
-        fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
+        fn func(_: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0 or !predicate(str[0]))
                 return error.ParserFailed;
             return Res{ .value = str[0], .rest = str[1..] };
@@ -57,7 +57,7 @@ pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
 pub fn not(comptime parser: anytype) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
     return struct {
-        fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
+        fn res(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
 

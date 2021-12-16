@@ -13,7 +13,7 @@ const unicode = std.unicode;
 pub fn wrap(comptime predicate: fn (u21) bool) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
     return struct {
-        fn func(_: *mem.Allocator, str: []const u8) mecha.Error!Res {
+        fn func(_: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
             const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
@@ -82,7 +82,7 @@ test "range" {
 pub fn not(comptime parser: anytype) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
     return struct {
-        fn res(allocator: *mem.Allocator, str: []const u8) mecha.Error!Res {
+        fn res(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
             if (parser(allocator, str)) |_| {

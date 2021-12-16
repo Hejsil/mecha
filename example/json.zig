@@ -1,12 +1,12 @@
+const mecha = @import("mecha");
 const std = @import("std");
-usingnamespace @import("mecha");
 
 const builtin = std.builtin;
 const testing = std.testing;
 
-const json = combine(.{ ws, element });
+const json = mecha.combine(.{ ws, element });
 
-const value = oneOf(.{
+const value = mecha.oneOf(.{
     object,
     array,
     jstring,
@@ -16,102 +16,102 @@ const value = oneOf(.{
     jnull,
 });
 
-const members = combine(.{
+const members = mecha.combine(.{
     member,
-    discard(many(combine(.{ comma, member }), .{ .collect = false })),
+    mecha.discard(mecha.many(mecha.combine(.{ comma, member }), .{ .collect = false })),
 });
 
-const elements = combine(.{
+const elements = mecha.combine(.{
     element,
-    discard(many(combine(.{ comma, element }), .{ .collect = false })),
+    mecha.discard(mecha.many(mecha.combine(.{ comma, element }), .{ .collect = false })),
 });
 
-const array = combine(.{ lbracket, discard(opt(elements)), rbracket });
-const element = ref(valueRef);
-const member = combine(.{ jstring, colon, element });
-const object = combine(.{ lcurly, discard(opt(members)), rcurly });
+const array = mecha.combine(.{ lbracket, mecha.discard(mecha.opt(elements)), rbracket });
+const element = mecha.ref(valueRef);
+const member = mecha.combine(.{ jstring, colon, element });
+const object = mecha.combine(.{ lcurly, mecha.discard(mecha.opt(members)), rcurly });
 
-fn valueRef() Parser(void) {
+fn valueRef() mecha.Parser(void) {
     return value;
 }
 
-const colon = token(utf8.char(':'));
-const comma = token(utf8.char(','));
-const jfalse = token(string("false"));
-const jnull = token(string("null"));
-const jstring = token(combine(.{ utf8.char('"'), chars, utf8.char('"') }));
-const jtrue = token(string("true"));
-const lbracket = token(utf8.char('['));
-const lcurly = token(utf8.char('{'));
-const number = token(combine(.{ integer, fraction, exponent }));
-const rbracket = token(utf8.char(']'));
-const rcurly = token(utf8.char('}'));
+const colon = token(mecha.utf8.char(':'));
+const comma = token(mecha.utf8.char(','));
+const jfalse = token(mecha.string("false"));
+const jnull = token(mecha.string("null"));
+const jstring = token(mecha.combine(.{ mecha.utf8.char('"'), chars, mecha.utf8.char('"') }));
+const jtrue = token(mecha.string("true"));
+const lbracket = token(mecha.utf8.char('['));
+const lcurly = token(mecha.utf8.char('{'));
+const number = token(mecha.combine(.{ integer, fraction, exponent }));
+const rbracket = token(mecha.utf8.char(']'));
+const rcurly = token(mecha.utf8.char('}'));
 
-fn token(comptime parser: anytype) Parser(void) {
-    return combine(.{ discard(parser), ws });
+fn token(comptime parser: anytype) mecha.Parser(void) {
+    return mecha.combine(.{ mecha.discard(parser), ws });
 }
 
-const chars = discard(many(char, .{ .collect = false }));
+const chars = mecha.discard(mecha.many(char, .{ .collect = false }));
 
-const char = oneOf(.{
-    discard(utf8.range(0x0020, '"' - 1)),
-    discard(utf8.range('"' + 1, '\\' - 1)),
-    discard(utf8.range('\\' + 1, 0x10FFFF)),
-    combine(.{ utf8.char('\\'), escape }),
+const char = mecha.oneOf(.{
+    mecha.discard(mecha.utf8.range(0x0020, '"' - 1)),
+    mecha.discard(mecha.utf8.range('"' + 1, '\\' - 1)),
+    mecha.discard(mecha.utf8.range('\\' + 1, 0x10FFFF)),
+    mecha.combine(.{ mecha.utf8.char('\\'), escape }),
 });
 
-const escape = oneOf(.{
-    utf8.char('"'),
-    utf8.char('\\'),
-    utf8.char('/'),
-    utf8.char('b'),
-    utf8.char('f'),
-    utf8.char('n'),
-    utf8.char('r'),
-    utf8.char('t'),
-    combine(.{ utf8.char('u'), hex, hex, hex, hex }),
+const escape = mecha.oneOf(.{
+    mecha.utf8.char('"'),
+    mecha.utf8.char('\\'),
+    mecha.utf8.char('/'),
+    mecha.utf8.char('b'),
+    mecha.utf8.char('f'),
+    mecha.utf8.char('n'),
+    mecha.utf8.char('r'),
+    mecha.utf8.char('t'),
+    mecha.combine(.{ mecha.utf8.char('u'), hex, hex, hex, hex }),
 });
 
-const hex = oneOf(.{
+const hex = mecha.oneOf(.{
     jdigit,
-    discard(utf8.range('a', 'f')),
-    discard(utf8.range('A', 'F')),
+    mecha.discard(mecha.utf8.range('a', 'f')),
+    mecha.discard(mecha.utf8.range('A', 'F')),
 });
 
-const integer = oneOf(.{
-    combine(.{ onenine, digits }),
+const integer = mecha.oneOf(.{
+    mecha.combine(.{ onenine, digits }),
     jdigit,
-    combine(.{ utf8.char('-'), onenine, digits }),
-    combine(.{ utf8.char('-'), jdigit }),
+    mecha.combine(.{ mecha.utf8.char('-'), onenine, digits }),
+    mecha.combine(.{ mecha.utf8.char('-'), jdigit }),
 });
 
-const digits = discard(many(jdigit, .{ .collect = false, .min = 1 }));
+const digits = mecha.discard(mecha.many(jdigit, .{ .collect = false, .min = 1 }));
 
-const jdigit = oneOf(.{
-    utf8.char('0'),
+const jdigit = mecha.oneOf(.{
+    mecha.utf8.char('0'),
     onenine,
 });
 
-const onenine = discard(utf8.range('1', '9'));
+const onenine = mecha.discard(mecha.utf8.range('1', '9'));
 
-const fraction = discard(opt(
-    combine(.{ utf8.char('.'), digits }),
+const fraction = mecha.discard(mecha.opt(
+    mecha.combine(.{ mecha.utf8.char('.'), digits }),
 ));
 
-const exponent = discard(opt(
-    combine(.{ oneOf(.{ utf8.char('E'), utf8.char('e') }), sign, digits }),
-));
+const exponent = mecha.discard(mecha.opt(mecha.combine(
+    .{ mecha.oneOf(.{ mecha.utf8.char('E'), mecha.utf8.char('e') }), sign, digits },
+)));
 
-const sign = discard(opt(oneOf(.{
-    utf8.char('+'),
-    utf8.char('-'),
+const sign = mecha.discard(mecha.opt(mecha.oneOf(.{
+    mecha.utf8.char('+'),
+    mecha.utf8.char('-'),
 })));
 
-const ws = discard(many(oneOf(.{
-    utf8.char(0x0020),
-    utf8.char(0x000A),
-    utf8.char(0x000D),
-    utf8.char(0x0009),
+const ws = mecha.discard(mecha.many(mecha.oneOf(.{
+    mecha.utf8.char(0x0020),
+    mecha.utf8.char(0x000A),
+    mecha.utf8.char(0x000D),
+    mecha.utf8.char(0x0009),
 }), .{ .collect = false }));
 
 fn ok(s: []const u8) !void {

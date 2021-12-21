@@ -1,6 +1,6 @@
 pkgs:
   mecha:
-    version: 0.5.0
+    version: 0.6.0
     license: MIT
     description: A parser combinator library for Zig
     source_url: "https://github.com/Hejsil/mecha"

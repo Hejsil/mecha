@@ -117,7 +117,7 @@ test "string" {
 pub const ManyNOptions = struct {
     /// A parser used to parse the content between each element `manyN` parses.
     /// The default is `noop`, so each element will be parsed one after another.
-    separator: anytype = noop,
+    separator: fn (mem.Allocator, []const u8) Error!Void = noop,
 };
 
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
@@ -173,7 +173,7 @@ pub const ManyOptions = struct {
 
     /// A parser used to parse the content between each element `many` parses.
     /// The default is `noop`, so each element will be parsed one after another.
-    separator: anytype = noop,
+    separator: fn (mem.Allocator, []const u8) Error!Void = noop,
 };
 
 fn Many(comptime parser: anytype, comptime options: ManyOptions) type {

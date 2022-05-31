@@ -683,12 +683,14 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
 
             const max_digits = math.min(str.len, options.max_digits);
             const first = fmt.charToDigit(str[0], options.base) catch return error.ParserFailed;
-            const first_casted = math.cast(Int, first) catch return error.ParserFailed;
+            const first_casted = math.cast(Int, first) orelse return error.ParserFailed;
+
             var res = add_sub(0, first_casted) catch return error.ParserFailed;
             const end = for (str[1..max_digits]) |c, i| {
                 const d = fmt.charToDigit(c, options.base) catch break i;
-                const casted_b = math.cast(Int, options.base) catch break i;
-                const casted_d = math.cast(Int, d) catch break i;
+                const casted_b = math.cast(Int, options.base) orelse break i;
+                const casted_d = math.cast(Int, d) orelse break i;
+
                 const next = math.mul(Int, res, casted_b) catch break i;
                 res = add_sub(next, casted_d) catch break i;
             } else max_digits - 1;

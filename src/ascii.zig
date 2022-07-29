@@ -132,7 +132,7 @@ pub const space = wrap(ascii.isSpace);
 pub const upper = wrap(ascii.isUpper);
 pub const valid = wrap(ascii.isASCII);
 
-test "" {
+test "predicate" {
     try testWithPredicate(alpha, ascii.isAlpha);
     try testWithPredicate(alphanum, ascii.isAlNum);
     try testWithPredicate(blank, ascii.isBlank);

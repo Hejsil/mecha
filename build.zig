@@ -23,6 +23,7 @@ pub fn build(b: *Builder) void {
             tests.addPackagePath("mecha", "mecha.zig");
             tests.setBuildMode(test_mode);
             tests.setTarget(target);
+            tests.use_stage1 = true;
             test_step.dependOn(&tests.step);
         }
     }

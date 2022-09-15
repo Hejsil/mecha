@@ -4,6 +4,7 @@ const debug = std.debug;
 const fmt = std.fmt;
 const math = std.math;
 const mem = std.mem;
+const meta = std.meta;
 const testing = std.testing;
 const unicode = std.unicode;
 
@@ -33,7 +34,7 @@ pub fn Parser(comptime T: type) type {
 }
 
 pub fn ParserWithCC(comptime T: type, comptime cc: std.builtin.CallingConvention) type {
-    return *const fn (mem.Allocator, []const u8) callconv(cc) Error!Result(T);
+    return meta.FnPtr(fn (mem.Allocator, []const u8) callconv(cc) Error!Result(T));
 }
 
 fn typecheckParser(comptime P: type) void {
@@ -117,7 +118,7 @@ test "string" {
 pub const ManyNOptions = struct {
     /// A parser used to parse the content between each element `manyN` parses.
     /// The default is `noop`, so each element will be parsed one after another.
-    separator: *const fn (mem.Allocator, []const u8) Error!Void = noop,
+    separator: meta.FnPtr(fn (mem.Allocator, []const u8) Error!Void) = noop,
 };
 
 /// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
@@ -173,7 +174,7 @@ pub const ManyOptions = struct {
 
     /// A parser used to parse the content between each element `many` parses.
     /// The default is `noop`, so each element will be parsed one after another.
-    separator: *const fn (mem.Allocator, []const u8) Error!Void = noop,
+    separator: meta.FnPtr(fn (mem.Allocator, []const u8) Error!Void) = noop,
 };
 
 fn Many(comptime parser: anytype, comptime options: ManyOptions) type {
@@ -311,7 +312,7 @@ fn Combine(comptime parsers: anytype) type {
 /// HACK: Zig cannot cache functions that takes pointers (slices)
 ///       so we have to passed the types as an array by value.
 fn Tuple(comptime n: usize, comptime types: [n]type) type {
-    return std.meta.Tuple(&types);
+    return meta.Tuple(&types);
 }
 
 /// Takes a tuple of `Parser(any)` and constructs a parser that
@@ -329,10 +330,9 @@ pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
             var res: Res = undefined;
             res.rest = str;
 
-            comptime var i = 0;
             comptime var j = 0;
-            inline while (i < parsers.len) : (i += 1) {
-                const r = try parsers[i](allocator, res.rest);
+            inline for (parsers) |parser| {
+                const r = try parser(allocator, res.rest);
                 res.rest = r.rest;
 
                 if (@TypeOf(r.value) != void) {
@@ -458,7 +458,10 @@ pub fn convert(
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to an int of type `Int`.
-pub fn toInt(comptime Int: type, comptime base: u8) *const fn (mem.Allocator, []const u8) Error!Int {
+pub fn toInt(
+    comptime Int: type,
+    comptime base: u8,
+) meta.FnPtr(fn (mem.Allocator, []const u8) Error!Int) {
     return struct {
         fn func(_: mem.Allocator, str: []const u8) Error!Int {
             return fmt.parseInt(Int, str, base) catch error.ParserFailed;
@@ -468,7 +471,7 @@ pub fn toInt(comptime Int: type, comptime base: u8) *const fn (mem.Allocator, []
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to a float of type `Float`.
-pub fn toFloat(comptime Float: type) *const fn (mem.Allocator, []const u8) Error!Float {
+pub fn toFloat(comptime Float: type) meta.FnPtr(fn (mem.Allocator, []const u8) Error!Float) {
     return struct {
         fn func(_: mem.Allocator, str: []const u8) Error!Float {
             return fmt.parseFloat(Float, str) catch error.ParserFailed;
@@ -490,7 +493,7 @@ pub fn toChar(_: mem.Allocator, str: []const u8) anyerror!u21 {
 
 /// Constructs a convert function for `convert` that takes a
 /// string and converts it to an `Enum` with `std.meta.stringToEnum`.
-pub fn toEnum(comptime Enum: type) *const fn (mem.Allocator, []const u8) Error!Enum {
+pub fn toEnum(comptime Enum: type) meta.FnPtr(fn (mem.Allocator, []const u8) Error!Enum) {
     return struct {
         fn func(_: mem.Allocator, str: []const u8) Error!Enum {
             return std.meta.stringToEnum(Enum, str) orelse error.ParserFailed;
@@ -677,7 +680,10 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
             return parseAfterSign(str, add);
         }
 
-        fn parseAfterSign(str: []const u8, add_sub: *const fn (Int, Int) Overflow!Int) Error!Res {
+        fn parseAfterSign(
+            str: []const u8,
+            add_sub: meta.FnPtr(fn (Int, Int) Overflow!Int),
+        ) Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
 
@@ -790,8 +796,8 @@ test "enumeration" {
 /// This function introduces the indirection required for recursive grammars.
 /// ```
 /// const digit_10 = discard(digit(10));
-/// const digits = oneOf(.{ combine(.{ digit_10, ref(digits_ref) }), digit_10 });
-/// fn digits_ref() Parser(void) {
+/// const digits = oneOf(.{ combine(.{ digit_10, ref(digitsRef) }), digit_10 });
+/// fn digitsRef() Parser(void) {
 ///     return digits;
 /// };
 /// ```
@@ -809,8 +815,8 @@ test "ref" {
     const allocator = testing.failing_allocator;
     const Scope = struct {
         const digit = discard(ascii.digit(10));
-        const digits = oneOf(.{ combine(.{ digit, ref(digits_ref) }), digit });
-        fn digits_ref() Parser(void) {
+        const digits = oneOf(.{ combine(.{ digit, ref(digitsRef) }), digit });
+        fn digitsRef() Parser(void) {
             return digits;
         }
     };

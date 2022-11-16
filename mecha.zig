@@ -38,7 +38,12 @@ pub fn ParserWithCC(comptime T: type, comptime cc: std.builtin.CallingConvention
 }
 
 fn typecheckParser(comptime P: type) void {
-    switch (@typeInfo(P)) {
+    const Fn = switch (@typeInfo(P)) {
+        .Pointer => |p| p.child,
+        .Fn => P,
+        else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
+    };
+    switch (@typeInfo(Fn)) {
         .Fn => |func| {
             const R = func.return_type orelse
                 @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'");
@@ -54,7 +59,11 @@ fn typecheckParser(comptime P: type) void {
 }
 
 fn ReturnType(comptime P: type) type {
-    return @typeInfo(P).Fn.return_type.?;
+    return switch (@typeInfo(P)) {
+        .Pointer => |p| @typeInfo(p.child).Fn.return_type.?,
+        .Fn => |f| f.return_type.?,
+        else => unreachable,
+    };
 }
 
 /// The reverse of `Parser`. Give it a `Parser` type

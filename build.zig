@@ -4,28 +4,23 @@ const std = @import("std");
 const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
+    const mode = b.standardReleaseOptions();
     const target = b.standardTargetOptions(.{});
+    const stage1 = b.option(bool, "stage1", "Use the stage 1 compiler") orelse false;
 
-    const test_all_step = b.step("test", "Run all tests in all modes.");
-    inline for (@typeInfo(std.builtin.Mode).Enum.fields) |field| {
-        const test_mode = @field(std.builtin.Mode, field.name);
-        const mode_str = @tagName(test_mode);
+    const test_step = b.step("test", "Run all tests in all modes.");
 
-        const test_step = b.step("test-" ++ mode_str, "Run all tests in " ++ mode_str ++ ".");
-        test_all_step.dependOn(test_step);
-
-        inline for ([_][]const u8{
-            "mecha.zig",
-            "example/rgb.zig",
-            "example/json.zig",
-        }) |test_file| {
-            const tests = b.addTest(test_file);
-            tests.addPackagePath("mecha", "mecha.zig");
-            tests.setBuildMode(test_mode);
-            tests.setTarget(target);
-            tests.use_stage1 = true;
-            test_step.dependOn(&tests.step);
-        }
+    inline for ([_][]const u8{
+        "mecha.zig",
+        "example/rgb.zig",
+        "example/json.zig",
+    }) |test_file| {
+        const tests = b.addTest(test_file);
+        tests.addPackagePath("mecha", "mecha.zig");
+        tests.setBuildMode(mode);
+        tests.setTarget(target);
+        tests.use_stage1 = stage1;
+        test_step.dependOn(&tests.step);
     }
 
     const readme_step = b.step("readme", "Remake README.");
@@ -34,7 +29,7 @@ pub fn build(b: *Builder) void {
 
     const all_step = b.step("all", "Build everything and runs all tests");
     all_step.dependOn(readme_step);
-    all_step.dependOn(test_all_step);
+    all_step.dependOn(test_step);
 
     b.default_step.dependOn(all_step);
 }

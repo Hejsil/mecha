@@ -28,6 +28,7 @@ pub fn char(comptime i: u8) mecha.Parser(void) {
 }
 
 test "char" {
+    @setEvalBranchQuota(5000);
     inline for ([_]void{{}} ** 255) |_, i| {
         const c = comptime @intCast(u8, i);
         try testWithPredicate(char(c), rangePred(c, c));
@@ -146,7 +147,7 @@ test "predicate" {
     try testWithPredicate(valid, ascii.isASCII);
 }
 
-fn testWithPredicate(parser: anytype, pred: fn (u8) bool) !void {
+fn testWithPredicate(parser: anytype, pred: std.meta.FnPtr(fn (u8) bool)) !void {
     const allocator = testing.failing_allocator;
     for ([_]void{{}} ** 255) |_, i| {
         const c = comptime @intCast(u8, i);

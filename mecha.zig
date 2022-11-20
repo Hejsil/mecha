@@ -514,8 +514,8 @@ pub fn toEnum(comptime Enum: type) meta.FnPtr(fn (mem.Allocator, []const u8) Err
 /// and returns `true` if it is `"true"` and `false` if it
 /// is `"false"`.
 pub fn toBool(allocator: mem.Allocator, str: []const u8) Error!bool {
-    const r = try toEnum(enum { @"false", @"true" })(allocator, str);
-    return r == .@"true";
+    const r = try toEnum(enum { false, true })(allocator, str);
+    return r == .true;
 }
 
 test "convert" {

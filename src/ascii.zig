@@ -147,7 +147,7 @@ test "predicate" {
     try testWithPredicate(valid, ascii.isASCII);
 }
 
-fn testWithPredicate(parser: anytype, pred: std.meta.FnPtr(fn (u8) bool)) !void {
+fn testWithPredicate(parser: anytype, pred: *const fn (u8) bool) !void {
     const allocator = testing.failing_allocator;
     for ([_]void{{}} ** 255) |_, i| {
         const c = comptime @intCast(u8, i);

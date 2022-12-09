@@ -228,7 +228,7 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
                 return error.ParserFailed;
 
             return Res{
-                .value = if (options.collect) res.toOwnedSlice() else str[0 .. str.len - rem.len],
+                .value = if (options.collect) try res.toOwnedSlice() else str[0 .. str.len - rem.len],
                 .rest = rem,
             };
         }

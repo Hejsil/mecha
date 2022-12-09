@@ -6,7 +6,6 @@ const Builder = std.build.Builder;
 pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     const target = b.standardTargetOptions(.{});
-    const stage1 = b.option(bool, "stage1", "Use the stage 1 compiler") orelse false;
 
     const test_step = b.step("test", "Run all tests in all modes.");
 
@@ -19,7 +18,6 @@ pub fn build(b: *Builder) void {
         tests.addPackagePath("mecha", "mecha.zig");
         tests.setBuildMode(mode);
         tests.setTarget(target);
-        tests.use_stage1 = stage1;
         test_step.dependOn(&tests.step);
     }
 

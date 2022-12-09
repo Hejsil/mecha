@@ -9,7 +9,6 @@ jobs:
   test:
     strategy:
       matrix:
-        compiler: [stage1=true, stage1=false]
         release: [release-safe=false, release-safe=true, release-fast=true, release-small=true]
     runs-on: ubuntu-latest
     steps:
@@ -19,7 +18,7 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v2.0.1
         with:
           version: master
-      - run: zig build test -D${{ matrix.compiler }} -D${{ matrix.release }}
+      - run: zig build test -D${{ matrix.release }}
   lint:
     runs-on: ubuntu-latest
     steps:

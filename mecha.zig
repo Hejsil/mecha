@@ -51,7 +51,7 @@ fn typecheckParser(comptime P: type) void {
                 .ErrorUnion => |e| e.payload.Value,
                 else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),
             };
-            if (P != ParserWithCC(T, func.calling_convention))
+            if (*const Fn != ParserWithCC(T, func.calling_convention))
                 @compileError("expected 'mecha.Parser(" ++ @typeName(T) ++ ")', found '" ++ @typeName(P) ++ "'");
         },
         else => @compileError("expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'"),

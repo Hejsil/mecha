@@ -21,9 +21,17 @@ pub fn wrap(comptime predicate: fn (u8) bool) mecha.Parser(u8) {
     }.func;
 }
 
+pub fn charPred(comptime a: u8) fn (u8) bool {
+    return struct {
+        fn pred(b: u8) bool {
+            return a == b;
+        }
+    }.pred;
+}
+
 /// Constructs a parser that only succeeds if the string starts with `i`.
-pub fn char(comptime i: u8) mecha.Parser(void) {
-    return comptime mecha.discard(range(i, i));
+pub fn char(comptime c: u8) mecha.Parser(void) {
+    return mecha.discard(wrap(charPred(c)));
 }
 
 test "char" {
@@ -49,7 +57,7 @@ pub fn rangePred(comptime start: u8, comptime end: u8) fn (u8) bool {
 /// a codepoint that is in between `start` and `end` inclusively.
 /// The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
-    return wrap(comptime rangePred(start, end));
+    return wrap(rangePred(start, end));
 }
 
 /// Creates a parser that succeeds and parses one ascii character if

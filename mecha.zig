@@ -444,7 +444,7 @@ test "asStr" {
 
 /// Constructs a parser that has its result converted with the
 /// `conv` function. The ´conv` functions signature is
-/// `fn (mem.Allocator, ParserResult(parser)) !T`.
+/// `*const fn (mem.Allocator, ParserResult(parser)) !T`.
 /// The parser constructed will fail if `conv` fails.
 pub fn convert(
     comptime T: type,
@@ -552,7 +552,7 @@ test "convert" {
 
 /// Constructs a parser that has its result converted with the
 /// `conv` function. The ´conv` functions signature is
-/// `fn (ParserResult(parser)) T`, so this function should only
+/// `*const fn (ParserResult(parser)) T`, so this function should only
 /// be used for conversions that cannot fail. See `convert`.
 pub fn map(
     comptime T: type,

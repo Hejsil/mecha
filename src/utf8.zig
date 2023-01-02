@@ -10,7 +10,7 @@ const unicode = std.unicode;
 /// a `predicate`. If the `predicate` returns true, the parser will
 /// return the codepoint parsed and the rest of the string. Otherwise
 /// the parser will fail.
-pub fn wrap(comptime predicate: fn (u21) bool) mecha.Parser(u21) {
+pub fn wrap(comptime predicate: *const fn (u21) bool) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
     return struct {
         fn func(_: mem.Allocator, str: []const u8) mecha.Error!Res {

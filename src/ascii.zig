@@ -10,7 +10,7 @@ const testing = std.testing;
 /// a `predicate`. If the `predicate` returns true, the parser will
 /// return the byte parsed and the rest of the string. Otherwise
 /// the parser will fail.
-pub fn wrap(comptime predicate: fn (u8) bool) mecha.Parser(u8) {
+pub fn wrap(comptime predicate: *const fn (u8) bool) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
     return struct {
         fn func(_: mem.Allocator, str: []const u8) mecha.Error!Res {
@@ -21,7 +21,7 @@ pub fn wrap(comptime predicate: fn (u8) bool) mecha.Parser(u8) {
     }.func;
 }
 
-pub fn charPred(comptime a: u8) fn (u8) bool {
+pub fn charPred(comptime a: u8) *const fn (u8) bool {
     return struct {
         fn pred(b: u8) bool {
             return a == b;
@@ -42,7 +42,7 @@ test "char" {
     }
 }
 
-pub fn rangePred(comptime start: u8, comptime end: u8) fn (u8) bool {
+pub fn rangePred(comptime start: u8, comptime end: u8) *const fn (u8) bool {
     return struct {
         fn pred(c: u8) bool {
             return switch (c) {

@@ -1,7 +1,6 @@
 const mecha = @import("../mecha.zig");
 const std = @import("std");
 
-const ascii = std.ascii;
 const debug = std.debug;
 const math = std.math;
 const mem = std.mem;
@@ -73,9 +72,9 @@ pub fn not(comptime parser: anytype) mecha.Parser(u8) {
 }
 
 test "not" {
-    try testWithPredicate(not(alpha), struct {
+    try testWithPredicate(not(alphabetic), struct {
         fn pred(c: u8) bool {
-            return !ascii.isAlpha(c);
+            return !std.ascii.isAlphabetic(c);
         }
     }.pred);
 }
@@ -121,30 +120,25 @@ test "digit" {
     }.pred);
 }
 
-pub const alphanum = wrap(ascii.isAlNum);
-pub const alpha = wrap(ascii.isAlpha);
-pub const blank = wrap(ascii.isBlank);
-pub const cntrl = wrap(ascii.isCntrl);
-pub const graph = wrap(ascii.isGraph);
-pub const lower = wrap(ascii.isLower);
-pub const print = wrap(ascii.isPrint);
-pub const punct = wrap(ascii.isPunct);
-pub const space = wrap(ascii.isSpace);
-pub const upper = wrap(ascii.isUpper);
-pub const valid = wrap(ascii.isASCII);
+pub const alphabetic = wrap(std.ascii.isAlphabetic);
+pub const alphanumeric = wrap(std.ascii.isAlphanumeric);
+pub const ascii = wrap(std.ascii.isASCII);
+pub const control = wrap(std.ascii.isControl);
+pub const graph = wrap(std.ascii.isGraph);
+pub const lower = wrap(std.ascii.isLower);
+pub const print = wrap(std.ascii.isPrint);
+pub const upper = wrap(std.ascii.isUpper);
+pub const whitespace = wrap(std.ascii.isWhitespace);
 
 test "predicate" {
-    try testWithPredicate(alpha, ascii.isAlpha);
-    try testWithPredicate(alphanum, ascii.isAlNum);
-    try testWithPredicate(blank, ascii.isBlank);
-    try testWithPredicate(cntrl, ascii.isCntrl);
-    try testWithPredicate(graph, ascii.isGraph);
-    try testWithPredicate(lower, ascii.isLower);
-    try testWithPredicate(print, ascii.isPrint);
-    try testWithPredicate(punct, ascii.isPunct);
-    try testWithPredicate(space, ascii.isSpace);
-    try testWithPredicate(upper, ascii.isUpper);
-    try testWithPredicate(valid, ascii.isASCII);
+    try testWithPredicate(alphabetic, std.ascii.isAlphabetic);
+    try testWithPredicate(alphanumeric, std.ascii.isAlphanumeric);
+    try testWithPredicate(control, std.ascii.isControl);
+    try testWithPredicate(lower, std.ascii.isLower);
+    try testWithPredicate(print, std.ascii.isPrint);
+    try testWithPredicate(upper, std.ascii.isUpper);
+    try testWithPredicate(ascii, std.ascii.isASCII);
+    try testWithPredicate(whitespace, std.ascii.isWhitespace);
 }
 
 fn testWithPredicate(parser: anytype, pred: *const fn (u8) bool) !void {

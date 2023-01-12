@@ -671,7 +671,7 @@ pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
 
 /// Same as `intToken` but also converts the parsed string to an
 /// integer. This parser will at most parse the same number of digits
-/// as the underlying interger can hold in the specified base.
+/// as the underlying integer can hold in the specified base.
 pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
     debug.assert(options.max_digits != 0);
     const Res = Result(Int);

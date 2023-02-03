@@ -569,6 +569,32 @@ pub fn map(
     }.func;
 }
 
+/// Constructs a parser that consumes the input with `parser`
+/// and places `value` into it's result. Discarding `parser`
+/// result value, but keeping it's rest. This can be used
+/// to map parsers to static values, for example `\n` to
+/// the newline character.
+pub fn mapConst(
+    comptime T: type,
+    comptime value: T,
+    comptime parser: anytype,
+) Parser(T) {
+    const Res = Result(T);
+    typecheckParser(@TypeOf(parser));
+    return struct {
+        fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
+            const r = try parser(allocator, str);
+            return Res{ .value = value, .rest = r.rest };
+        }
+    }.func;
+}
+
+test "mapConst" {
+    const allocator = testing.failing_allocator;
+    const parser1 = comptime mapConst(u8, 3, asStr(string("123")));
+    try expectResult(u8, .{ .value = 3 }, parser1(allocator, "123"));
+}
+
 fn ToStructResult(comptime T: type) type {
     return @TypeOf(struct {
         fn func(_: anytype) T {

@@ -4,7 +4,7 @@ const std = @import("std");
 const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
     const test_step = b.step("test", "Run all tests in all modes.");
@@ -14,10 +14,12 @@ pub fn build(b: *Builder) void {
         "example/rgb.zig",
         "example/json.zig",
     }) |test_file| {
-        const tests = b.addTest(test_file);
-        tests.addPackagePath("mecha", "mecha.zig");
-        tests.setBuildMode(mode);
-        tests.setTarget(target);
+        const tests = b.addTest(.{
+            .root_source_file = .{ .path = test_file },
+            .optimize = optimize,
+            .target = target,
+        });
+        tests.addAnonymousModule("mecha", .{ .source_file = .{ .path = "mecha.zig" } });
         test_step.dependOn(&tests.step);
     }
 

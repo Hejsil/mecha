@@ -31,7 +31,7 @@ const hex2 = mecha.int(u8, .{
 const rgb1 = mecha.map(Rgb, mecha.toStruct(Rgb), mecha.manyN(hex1, 3, .{}));
 const rgb2 = mecha.map(Rgb, mecha.toStruct(Rgb), mecha.manyN(hex2, 3, .{}));
 const rgb = mecha.combine(.{
-    mecha.ascii.char('#'),
+    mecha.discard(mecha.ascii.char('#')),
     mecha.oneOf(.{
         rgb2,
         rgb1,

@@ -57,7 +57,7 @@ const char = mecha.oneOf(.{
     mecha.discard(mecha.utf8.range(0x0020, '"' - 1)),
     mecha.discard(mecha.utf8.range('"' + 1, '\\' - 1)),
     mecha.discard(mecha.utf8.range('\\' + 1, 0x10FFFF)),
-    mecha.combine(.{ mecha.utf8.char('\\'), escape }),
+    mecha.discard(mecha.combine(.{ mecha.discard(mecha.utf8.char('\\')), escape })),
 });
 
 const escape = mecha.oneOf(.{
@@ -81,25 +81,25 @@ const hex = mecha.oneOf(.{
 const integer = mecha.oneOf(.{
     mecha.combine(.{ onenine, digits }),
     jdigit,
-    mecha.combine(.{ mecha.utf8.char('-'), onenine, digits }),
-    mecha.combine(.{ mecha.utf8.char('-'), jdigit }),
+    mecha.combine(.{ mecha.discard(mecha.utf8.char('-')), onenine, digits }),
+    mecha.combine(.{ mecha.discard(mecha.utf8.char('-')), jdigit }),
 });
 
 const digits = mecha.discard(mecha.many(jdigit, .{ .collect = false, .min = 1 }));
 
 const jdigit = mecha.oneOf(.{
-    mecha.utf8.char('0'),
+    mecha.discard(mecha.utf8.char('0')),
     onenine,
 });
 
 const onenine = mecha.discard(mecha.utf8.range('1', '9'));
 
 const fraction = mecha.discard(mecha.opt(
-    mecha.combine(.{ mecha.utf8.char('.'), digits }),
+    mecha.combine(.{ mecha.discard(mecha.utf8.char('.')), digits }),
 ));
 
 const exponent = mecha.discard(mecha.opt(mecha.combine(
-    .{ mecha.oneOf(.{ mecha.utf8.char('E'), mecha.utf8.char('e') }), sign, digits },
+    .{ mecha.discard(mecha.oneOf(.{ mecha.utf8.char('E'), mecha.utf8.char('e') })), sign, digits },
 )));
 
 const sign = mecha.discard(mecha.opt(mecha.oneOf(.{

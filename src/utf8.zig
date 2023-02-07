@@ -29,23 +29,23 @@ pub fn wrap(comptime predicate: *const fn (u21) bool) mecha.Parser(u21) {
 }
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
-pub fn char(comptime c: u21) mecha.Parser(void) {
-    comptime {
-        var array: [4]u8 = undefined;
-        const len = unicode.utf8Encode(c, array[0..]) catch unreachable;
-        return mecha.string(array[0..len]);
-    }
+pub fn char(comptime c: u21) mecha.Parser(u21) {
+    return wrap(struct {
+        fn pred(cp: u21) bool {
+            return c == cp;
+        }
+    }.pred);
 }
 
 test "char" {
     const allocator = testing.failing_allocator;
-    try mecha.expectResult(void, .{ .value = {}, .rest = "" }, char('a')(allocator, "a"));
-    try mecha.expectResult(void, .{ .value = {}, .rest = "a" }, char('a')(allocator, "aa"));
-    try mecha.expectResult(void, error.ParserFailed, char('a')(allocator, "ba"));
-    try mecha.expectResult(void, error.ParserFailed, char('a')(allocator, ""));
-    try mecha.expectResult(void, .{ .value = {}, .rest = "ā" }, char(0x100)(allocator, "Āā"));
-    try mecha.expectResult(void, error.ParserFailed, char(0x100)(allocator, ""));
-    try mecha.expectResult(void, error.ParserFailed, char(0x100)(allocator, "\xc0"));
+    try mecha.expectResult(u21, .{ .value = 'a', .rest = "" }, char('a')(allocator, "a"));
+    try mecha.expectResult(u21, .{ .value = 'a', .rest = "a" }, char('a')(allocator, "aa"));
+    try mecha.expectResult(u21, error.ParserFailed, char('a')(allocator, "ba"));
+    try mecha.expectResult(u21, error.ParserFailed, char('a')(allocator, ""));
+    try mecha.expectResult(u21, .{ .value = 'Ā', .rest = "ā" }, char(0x100)(allocator, "Āā"));
+    try mecha.expectResult(u21, error.ParserFailed, char(0x100)(allocator, ""));
+    try mecha.expectResult(u21, error.ParserFailed, char(0x100)(allocator, "\xc0"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with

@@ -30,8 +30,8 @@ pub fn charPred(comptime a: u8) *const fn (u8) bool {
 }
 
 /// Constructs a parser that only succeeds if the string starts with `i`.
-pub fn char(comptime c: u8) mecha.Parser(void) {
-    return mecha.discard(wrap(charPred(c)));
+pub fn char(comptime c: u8) mecha.Parser(u8) {
+    return wrap(charPred(c));
 }
 
 test "char" {

@@ -162,7 +162,7 @@ test "manyN" {
     const parser1 = comptime manyN(ascii.range('a', 'b'), 3, .{});
     try expectResult([3]u8, .{ .value = "aba".*, .rest = "bab" }, parser1(allocator, "ababab"));
 
-    const parser2 = comptime manyN(ascii.range('a', 'b'), 3, .{ .separator = ascii.char(',') });
+    const parser2 = comptime manyN(ascii.range('a', 'b'), 3, .{ .separator = discard(ascii.char(',')) });
     try expectResult([3]u8, .{ .value = "aba".*, .rest = ",b,a,b" }, parser2(allocator, "a,b,a,b,a,b"));
 }
 
@@ -255,7 +255,7 @@ test "many" {
     try expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser2(allocator, "ababa"));
     try expectResult([]const u8, .{ .value = "abab", .rest = "ab" }, parser2(allocator, "ababab"));
 
-    const parser3 = comptime many(string("ab"), .{ .collect = false, .separator = ascii.char(',') });
+    const parser3 = comptime many(string("ab"), .{ .collect = false, .separator = discard(ascii.char(',')) });
     try expectResult([]const u8, .{ .value = "" }, parser3(allocator, ""));
     try expectResult([]const u8, .{ .value = "", .rest = "a" }, parser3(allocator, "a"));
     try expectResult([]const u8, .{ .value = "ab" }, parser3(allocator, "ab"));
@@ -368,10 +368,11 @@ test "combine" {
     try expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = null }, .rest = "qa" }, parser1(allocator, "qa"));
 
     const parser2 = comptime combine(.{ opt(ascii.range('a', 'b')), ascii.char('d') });
-    try expectResult(?u8, .{ .value = 'a' }, parser2(allocator, "ad"));
-    try expectResult(?u8, .{ .value = 'a', .rest = "a" }, parser2(allocator, "ada"));
-    try expectResult(?u8, .{ .value = null, .rest = "a" }, parser2(allocator, "da"));
-    try expectResult(?u8, error.ParserFailed, parser2(allocator, "qa"));
+    const Res2 = ParserResult(@TypeOf(parser2));
+    try expectResult(Res2, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' } }, parser2(allocator, "ad"));
+    try expectResult(Res2, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' }, .rest = "a" }, parser2(allocator, "ada"));
+    try expectResult(Res2, .{ .value = .{ .@"0" = null, .@"1" = 'd' }, .rest = "a" }, parser2(allocator, "da"));
+    try expectResult(Res2, error.ParserFailed, parser2(allocator, "qa"));
 }
 
 /// Takes a tuple of `Parser(T)` and constructs a parser that
@@ -632,12 +633,12 @@ test "map" {
         x: usize,
         y: usize,
     };
-    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, .{}), ascii.char(' '), int(usize, .{}) }));
+    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, .{}), discard(ascii.char(' ')), int(usize, .{}) }));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser1(allocator, "10 10"));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1(allocator, "20 20aa"));
     try expectResult(Point, error.ParserFailed, parser1(allocator, "12"));
 
-    const parser2 = comptime map(Point, toStruct(Point), manyN(combine(.{ int(usize, .{}), ascii.char(' ') }), 2, .{}));
+    const parser2 = comptime map(Point, toStruct(Point), manyN(combine(.{ int(usize, .{}), discard(ascii.char(' ')) }), 2, .{}));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser2(allocator, "10 10 "));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2(allocator, "20 20 aa"));
     try expectResult(Point, error.ParserFailed, parser2(allocator, "12"));

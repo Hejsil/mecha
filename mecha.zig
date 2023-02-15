@@ -443,16 +443,23 @@ test "asStr" {
     try expectResult([]const u8, .{ .value = "", .rest = "qa" }, parser2(allocator, "qa"));
 }
 
+fn ReturnTypeErrorPayload(comptime P: type) type {
+    const return_type = ReturnType(P);
+    return switch (@typeInfo(return_type)) {
+        .ErrorUnion => |eu| eu.payload,
+        else => return_type,
+    };
+}
+
 /// Constructs a parser that has its result converted with the
 /// `conv` function. The ´conv` functions signature is
 /// `*const fn (mem.Allocator, ParserResult(parser)) !T`.
 /// The parser constructed will fail if `conv` fails.
 pub fn convert(
-    comptime T: type,
     comptime conv: anytype,
     comptime parser: anytype,
-) Parser(T) {
-    const Res = Result(T);
+) Parser(ReturnTypeErrorPayload(@TypeOf(conv))) {
+    const Res = Result(ReturnTypeErrorPayload(@TypeOf(conv)));
     return struct {
         fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             const r = try parser(allocator, str);
@@ -521,33 +528,33 @@ pub fn toBool(allocator: mem.Allocator, str: []const u8) Error!bool {
 
 test "convert" {
     const allocator = testing.failing_allocator;
-    const parser1 = comptime convert(u8, toInt(u8, 10), asStr(string("123")));
+    const parser1 = comptime convert(toInt(u8, 10), asStr(string("123")));
     try expectResult(u8, .{ .value = 123 }, parser1(allocator, "123"));
     try expectResult(u8, .{ .value = 123, .rest = "a" }, parser1(allocator, "123a"));
     try expectResult(u8, error.ParserFailed, parser1(allocator, "12"));
 
-    const parser2 = comptime convert(u21, toChar, asStr(string("a")));
+    const parser2 = comptime convert(toChar, asStr(string("a")));
     try expectResult(u21, .{ .value = 'a' }, parser2(allocator, "a"));
     try expectResult(u21, .{ .value = 'a', .rest = "a" }, parser2(allocator, "aa"));
     try expectResult(u21, error.ParserFailed, parser2(allocator, "b"));
 
-    const parser3 = comptime convert(bool, toBool, rest);
+    const parser3 = comptime convert(toBool, rest);
     try expectResult(bool, .{ .value = true }, parser3(allocator, "true"));
     try expectResult(bool, .{ .value = false }, parser3(allocator, "false"));
     try expectResult(bool, error.ParserFailed, parser3(allocator, "b"));
 
-    const parser4 = comptime convert(f32, toFloat(f32), asStr(string("1.23")));
+    const parser4 = comptime convert(toFloat(f32), asStr(string("1.23")));
     try expectResult(f32, .{ .value = 1.23 }, parser4(allocator, "1.23"));
     try expectResult(f32, .{ .value = 1.23, .rest = "a" }, parser4(allocator, "1.23a"));
     try expectResult(f32, error.ParserFailed, parser4(allocator, "1.2"));
 
     const E = enum(u8) { a, b, _ };
-    const parser5 = comptime convert(E, toEnum(E), rest);
+    const parser5 = comptime convert(toEnum(E), rest);
     try expectResult(E, .{ .value = E.a }, parser5(allocator, "a"));
     try expectResult(E, .{ .value = E.b }, parser5(allocator, "b"));
     try expectResult(E, error.ParserFailed, parser5(allocator, "2"));
 
-    const parser6 = comptime convert(u21, toChar, asStr(string("Āā")));
+    const parser6 = comptime convert(toChar, asStr(string("Āā")));
     try expectResult(u21, .{ .value = 0x100 }, parser6(allocator, "Āā"));
 }
 

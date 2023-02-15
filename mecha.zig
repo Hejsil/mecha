@@ -556,11 +556,10 @@ test "convert" {
 /// `*const fn (ParserResult(parser)) T`, so this function should only
 /// be used for conversions that cannot fail. See `convert`.
 pub fn map(
-    comptime T: type,
     comptime conv: anytype,
     comptime parser: anytype,
-) Parser(T) {
-    const Res = Result(T);
+) Parser(ReturnType(@TypeOf(conv))) {
+    const Res = Result(ReturnType(@TypeOf(conv)));
     typecheckParser(@TypeOf(parser));
     return struct {
         fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
@@ -576,11 +575,10 @@ pub fn map(
 /// to map parsers to static values, for example `\n` to
 /// the newline character.
 pub fn mapConst(
-    comptime T: type,
-    comptime value: T,
+    comptime value: anytype,
     comptime parser: anytype,
-) Parser(T) {
-    const Res = Result(T);
+) Parser(@TypeOf(value)) {
+    const Res = Result(@TypeOf(value));
     typecheckParser(@TypeOf(parser));
     return struct {
         fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
@@ -592,7 +590,7 @@ pub fn mapConst(
 
 test "mapConst" {
     const allocator = testing.failing_allocator;
-    const parser1 = comptime mapConst(u8, 3, asStr(string("123")));
+    const parser1 = comptime mapConst(@as(u8, 3), asStr(string("123")));
     try expectResult(u8, .{ .value = 3 }, parser1(allocator, "123"));
 }
 
@@ -633,12 +631,12 @@ test "map" {
         x: usize,
         y: usize,
     };
-    const parser1 = comptime map(Point, toStruct(Point), combine(.{ int(usize, .{}), discard(ascii.char(' ')), int(usize, .{}) }));
+    const parser1 = comptime map(toStruct(Point), combine(.{ int(usize, .{}), discard(ascii.char(' ')), int(usize, .{}) }));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser1(allocator, "10 10"));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1(allocator, "20 20aa"));
     try expectResult(Point, error.ParserFailed, parser1(allocator, "12"));
 
-    const parser2 = comptime map(Point, toStruct(Point), manyN(combine(.{ int(usize, .{}), discard(ascii.char(' ')) }), 2, .{}));
+    const parser2 = comptime map(toStruct(Point), manyN(combine(.{ int(usize, .{}), discard(ascii.char(' ')) }), 2, .{}));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser2(allocator, "10 10 "));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2(allocator, "20 20 aa"));
     try expectResult(Point, error.ParserFailed, parser2(allocator, "12"));
@@ -647,7 +645,7 @@ test "map" {
 /// Constructs a parser that discards the result returned from the parser
 /// it wraps.
 pub fn discard(comptime parser: anytype) Parser(void) {
-    return map(void, struct {
+    return map(struct {
         fn d(_: anytype) void {}
     }.d, parser);
 }

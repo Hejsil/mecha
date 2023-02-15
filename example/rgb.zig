@@ -11,7 +11,7 @@ fn toByte(v: u4) u8 {
     return @as(u8, v) * 0x10 + v;
 }
 
-const hex1 = mecha.map(u8, toByte, mecha.int(u4, .{
+const hex1 = mecha.map(toByte, mecha.int(u4, .{
     .parse_sign = false,
     .base = 16,
     .max_digits = 1,
@@ -21,8 +21,8 @@ const hex2 = mecha.int(u8, .{
     .base = 16,
     .max_digits = 2,
 });
-const rgb1 = mecha.map(Rgb, mecha.toStruct(Rgb), mecha.manyN(hex1, 3, .{}));
-const rgb2 = mecha.map(Rgb, mecha.toStruct(Rgb), mecha.manyN(hex2, 3, .{}));
+const rgb1 = mecha.map(mecha.toStruct(Rgb), mecha.manyN(hex1, 3, .{}));
+const rgb2 = mecha.map(mecha.toStruct(Rgb), mecha.manyN(hex2, 3, .{}));
 const rgb = mecha.combine(.{
     mecha.discard(mecha.ascii.char('#')),
     mecha.oneOf(.{

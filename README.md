@@ -18,7 +18,7 @@ fn toByte(v: u4) u8 {
     return @as(u8, v) * 0x10 + v;
 }
 
-const hex1 = mecha.map(u8, toByte, mecha.int(u4, .{
+const hex1 = mecha.map(toByte, mecha.int(u4, .{
     .parse_sign = false,
     .base = 16,
     .max_digits = 1,

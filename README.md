@@ -28,8 +28,8 @@ const hex2 = mecha.int(u8, .{
     .base = 16,
     .max_digits = 2,
 });
-const rgb1 = mecha.map(Rgb, mecha.toStruct(Rgb), mecha.manyN(hex1, 3, .{}));
-const rgb2 = mecha.map(Rgb, mecha.toStruct(Rgb), mecha.manyN(hex2, 3, .{}));
+const rgb1 = mecha.map(mecha.toStruct(Rgb), mecha.manyN(hex1, 3, .{}));
+const rgb2 = mecha.map(mecha.toStruct(Rgb), mecha.manyN(hex2, 3, .{}));
 const rgb = mecha.combine(.{
     mecha.discard(mecha.ascii.char('#')),
     mecha.oneOf(.{

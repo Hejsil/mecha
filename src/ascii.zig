@@ -36,7 +36,7 @@ pub fn char(comptime c: u8) mecha.Parser(u8) {
 
 test "char" {
     @setEvalBranchQuota(5000);
-    inline for ([_]void{{}} ** 255) |_, i| {
+    inline for ([_]void{{}} ** 255, 0..) |_, i| {
         const c = comptime @intCast(u8, i);
         try testWithPredicate(char(c), rangePred(c, c));
     }
@@ -151,7 +151,7 @@ test "predicate" {
 
 fn testWithPredicate(parser: anytype, pred: *const fn (u8) bool) !void {
     const allocator = testing.failing_allocator;
-    for ([_]void{{}} ** 255) |_, i| {
+    for ([_]void{{}} ** 255, 0..) |_, i| {
         const c = comptime @intCast(u8, i);
         if (pred(c)) switch (@TypeOf(parser)) {
             mecha.Parser(u8) => try mecha.expectResult(u8, .{ .value = c }, parser(allocator, &[_]u8{c})),

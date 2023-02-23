@@ -143,7 +143,7 @@ pub fn manyN(
         fn func(allocator: mem.Allocator, str: []const u8) Error!Res {
             var rem = str;
             var res: Array = undefined;
-            for (res) |*value, i| {
+            for (&res, 0..) |*value, i| {
                 if (i != 0)
                     rem = (try options.separator(allocator, rem)).rest;
 
@@ -624,7 +624,7 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
                     "same number of fields. Conversion is not possible.");
 
             var res: T = undefined;
-            inline for (struct_fields) |field, i|
+            inline for (struct_fields, 0..) |field, i|
                 @field(res, field.name) = tuple[i];
 
             return res;
@@ -733,7 +733,7 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
             const first_casted = math.cast(Int, first) orelse return error.ParserFailed;
 
             var res = add_sub(0, first_casted) catch return error.ParserFailed;
-            const end = for (str[1..max_digits]) |c, i| {
+            const end = for (str[1..max_digits], 0..) |c, i| {
                 const d = fmt.charToDigit(c, options.base) catch break i;
                 const casted_b = math.cast(Int, options.base) orelse break i;
                 const casted_d = math.cast(Int, d) orelse break i;

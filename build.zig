@@ -4,11 +4,12 @@ const std = @import("std");
 const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
+    b.addModule(.{ .name = "mecha", .source_file = .{ .path = "mecha.zig" } });
+
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
     const test_step = b.step("test", "Run all tests in all modes.");
-
     inline for ([_][]const u8{
         "mecha.zig",
         "example/rgb.zig",

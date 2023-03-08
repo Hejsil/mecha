@@ -4,10 +4,10 @@ const std = @import("std");
 const Builder = std.build.Builder;
 
 pub fn build(b: *Builder) void {
-    b.addModule(.{ .name = "mecha", .source_file = .{ .path = "mecha.zig" } });
-
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
+
+    const module = b.addModule("mecha", .{ .source_file = .{ .path = "mecha.zig" } });
 
     const test_step = b.step("test", "Run all tests in all modes.");
     inline for ([_][]const u8{
@@ -20,7 +20,7 @@ pub fn build(b: *Builder) void {
             .optimize = optimize,
             .target = target,
         });
-        tests.addAnonymousModule("mecha", .{ .source_file = .{ .path = "mecha.zig" } });
+        tests.addModule("mecha", module);
         test_step.dependOn(&tests.step);
     }
 

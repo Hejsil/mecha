@@ -37,15 +37,20 @@ pub fn build(b: *Builder) void {
 
 fn readMeStep(b: *Builder) *std.build.Step {
     const s = b.allocator.create(std.build.Step) catch unreachable;
-    s.* = std.build.Step.init(.custom, "ReadMeStep", b.allocator, struct {
-        fn make(_: *std.build.Step) anyerror!void {
-            @setEvalBranchQuota(10000);
-            const file = try std.fs.cwd().createFile("README.md", .{});
-            const writer = file.writer();
-            try writer.print(@embedFile("example/README.md.template"), .{
-                @embedFile("example/rgb.zig"),
-            });
-        }
-    }.make);
+    s.* = std.build.Step.init(.{
+        .id = .custom,
+        .name = "ReadMeStep",
+        .owner = b,
+        .makeFn = struct {
+            fn make(_: *std.build.Step, _: *std.Progress.Node) anyerror!void {
+                @setEvalBranchQuota(10000);
+                const file = try std.fs.cwd().createFile("README.md", .{});
+                const writer = file.writer();
+                try writer.print(@embedFile("example/README.md.template"), .{
+                    @embedFile("example/rgb.zig"),
+                });
+            }
+        }.make,
+    });
     return s;
 }

@@ -21,7 +21,7 @@ pub fn build(b: *Builder) void {
             .target = target,
         });
         tests.addModule("mecha", module);
-        test_step.dependOn(&tests.step);
+        test_step.dependOn(&tests.run().step);
     }
 
     const readme_step = b.step("readme", "Remake README.");

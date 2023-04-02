@@ -375,6 +375,99 @@ test "combine" {
     try expectResult(Res2, error.ParserFailed, parser2(allocator, "qa"));
 }
 
+/// Takes three parsers and constructs a parser that only succeeds
+/// if all parsers succeed to parse. Similar to `mecha.combine`,
+/// but lookaheads for `parser_close`.
+pub fn bracket(
+    comptime parser_open: anytype,
+    comptime parser_body: anytype,
+    comptime parser_close: anytype,
+) Parser(Combine(.{ parser_open, parser_body, parser_close })) {
+    const parsers = .{ parser_open, parser_body, parser_close };
+    const types = parsersTypes(parsers);
+    const Res = Result(Combine(parsers));
+    return struct {
+        fn func(allocator: std.mem.Allocator, s: []const u8) Error!Res {
+            const r_open = try parser_open(allocator, s);
+
+            var i: usize = 0;
+            const r_close = while (i < r_open.rest.len) : (i += 1) {
+                break parser_close(allocator, r_open.rest[i..]) catch |e| switch (e) {
+                    error.ParserFailed => continue,
+                    else => return e,
+                };
+            } else {
+                return error.ParserFailed;
+            };
+
+            const r_body = try consumeWith(parser_body)(allocator, r_open.rest[0..i]);
+
+            var res: Res = undefined;
+            res.rest = r_close.rest;
+            comptime var j = 0;
+            inline for (.{ r_open, r_body, r_close }) |r| {
+                if (@TypeOf(r.value) != void) {
+                    if (types.len == 1) {
+                        res.value = r.value;
+                    } else {
+                        res.value[j] = r.value;
+                    }
+                    j += 1;
+                }
+            }
+            return res;
+        }
+    }.func;
+}
+
+test "bracket" {
+    const allocator = testing.failing_allocator;
+    const parser1 = comptime bracket(ascii.char('('), ascii.range('a', 'b'), ascii.char(')'));
+    const Res1 = ParserResult(@TypeOf(parser1));
+    try expectResult(Res1, .{ .value = .{ .@"0" = '(', .@"1" = 'a', .@"2" = ')' } }, parser1(allocator, "(a)"));
+    try expectResult(Res1, .{ .value = .{ .@"0" = '(', .@"1" = 'a', .@"2" = ')' }, .rest = "a" }, parser1(allocator, "(a)a"));
+    try expectResult(Res1, error.ParserFailed, parser1(allocator, "a"));
+    try expectResult(Res1, error.ParserFailed, parser1(allocator, "()"));
+    try expectResult(Res1, error.ParserFailed, parser1(allocator, "(a"));
+    try expectResult(Res1, error.ParserFailed, parser1(allocator, "a)"));
+
+    const parser2 = comptime bracket(string("(a"), many(ascii.range('a', 'b'), .{ .collect = false }), string("b)"));
+    const Res2 = ParserResult(@TypeOf(parser2));
+    try expectResult(Res2, .{ .value = "" }, parser2(allocator, "(ab)"));
+    try expectResult(Res2, .{ .value = "a" }, parser2(allocator, "(aab)"));
+    try expectResult(Res2, .{ .value = "ab" }, parser2(allocator, "(aabb)"));
+    try expectResult(Res2, error.ParserFailed, parser2(allocator, "()"));
+    try expectResult(Res2, error.ParserFailed, parser2(allocator, "(ab"));
+    try expectResult(Res2, error.ParserFailed, parser2(allocator, "ab)"));
+
+    // `parser2` cannot be alternated with `combine`
+    const parser3 = comptime combine(.{ string("(a"), many(ascii.range('a', 'b'), .{ .collect = false }), string("b)") });
+    const Res3 = ParserResult(@TypeOf(parser3));
+    try expectResult(Res3, error.ParserFailed, parser3(allocator, "(aabb)"));
+}
+
+/// Takes a parser and constructs a parser that only succeeds
+/// if the parser consumes all of the input.
+pub fn consumeWith(comptime parser: anytype) @TypeOf(parser) {
+    return struct {
+        fn func(allocator: std.mem.Allocator, s: []const u8) ReturnType(@TypeOf(parser)) {
+            const r = try parser(allocator, s);
+            if (r.rest.len == 0)
+                return r;
+            return error.ParserFailed;
+        }
+    }.func;
+}
+
+test "consumeWith" {
+    const allocator = testing.failing_allocator;
+    const parser = comptime consumeWith(ascii.range('a', 'b'));
+    const Res = ParserResult(@TypeOf(parser));
+    try expectResult(Res, .{ .value = 'a', .rest = "" }, parser(allocator, "a"));
+    try expectResult(Res, error.ParserFailed, parser(allocator, "aa"));
+    try expectResult(Res, .{ .value = 'b', .rest = "" }, parser(allocator, "b"));
+}
+
 /// Takes a tuple of `Parser(T)` and constructs a parser that
 /// only succeeds if one of the parsers succeed to parse. The
 /// parsers will be called in order all with `str` as input.

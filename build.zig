@@ -10,7 +10,7 @@ pub fn build(b: *Builder) void {
     const module = b.addModule("mecha", .{ .source_file = .{ .path = "mecha.zig" } });
 
     const test_step = b.step("test", "Run all tests in all modes.");
-    inline for ([_][]const u8{
+    for ([_][]const u8{
         "mecha.zig",
         "example/rgb.zig",
         "example/json.zig",
@@ -20,8 +20,9 @@ pub fn build(b: *Builder) void {
             .optimize = optimize,
             .target = target,
         });
+        const run_tests = b.addRunArtifact(tests);
         tests.addModule("mecha", module);
-        test_step.dependOn(&tests.run().step);
+        test_step.dependOn(&run_tests.step);
     }
 
     const readme_step = b.step("readme", "Remake README.");

@@ -152,7 +152,7 @@ test "predicate" {
 fn testWithPredicate(parser: anytype, pred: *const fn (u8) bool) !void {
     const allocator = testing.failing_allocator;
     for ([_]void{{}} ** 255, 0..) |_, i| {
-        const c = comptime @intCast(u8, i);
+        const c = @intCast(u8, i);
         if (pred(c)) switch (@TypeOf(parser)) {
             mecha.Parser(u8) => try mecha.expectResult(u8, .{ .value = c }, parser(allocator, &[_]u8{c})),
             mecha.Parser(void) => try mecha.expectResult(void, .{ .value = {} }, parser(allocator, &[_]u8{c})),

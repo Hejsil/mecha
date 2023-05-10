@@ -18,18 +18,22 @@ const value = mecha.oneOf(.{
 
 const members = mecha.combine(.{
     member,
-    mecha.discard(mecha.many(mecha.combine(.{ comma, member }), .{ .collect = false })),
+    mecha.combine(.{ comma, member })
+        .many(.{ .collect = false })
+        .discard(),
 });
 
 const elements = mecha.combine(.{
     element,
-    mecha.discard(mecha.many(mecha.combine(.{ comma, element }), .{ .collect = false })),
+    mecha.combine(.{ comma, element })
+        .many(.{ .collect = false })
+        .discard(),
 });
 
-const array = mecha.combine(.{ lbracket, mecha.discard(mecha.opt(elements)), rbracket });
+const array = mecha.combine(.{ lbracket, elements.opt().discard(), rbracket });
 const element = mecha.ref(valueRef);
 const member = mecha.combine(.{ jstring, colon, element });
-const object = mecha.combine(.{ lcurly, mecha.discard(mecha.opt(members)), rcurly });
+const object = mecha.combine(.{ lcurly, members.opt().discard(), rcurly });
 
 fn valueRef() mecha.Parser(void) {
     return value;
@@ -48,16 +52,19 @@ const rbracket = token(mecha.utf8.char(']'));
 const rcurly = token(mecha.utf8.char('}'));
 
 fn token(comptime parser: anytype) mecha.Parser(void) {
-    return mecha.combine(.{ mecha.discard(parser), ws });
+    return mecha.combine(.{ parser.discard(), ws });
 }
 
-const chars = mecha.discard(mecha.many(char, .{ .collect = false }));
+const chars = char.many(.{ .collect = false }).discard();
 
 const char = mecha.oneOf(.{
-    mecha.discard(mecha.utf8.range(0x0020, '"' - 1)),
-    mecha.discard(mecha.utf8.range('"' + 1, '\\' - 1)),
-    mecha.discard(mecha.utf8.range('\\' + 1, 0x10FFFF)),
-    mecha.discard(mecha.combine(.{ mecha.discard(mecha.utf8.char('\\')), escape })),
+    mecha.utf8.range(0x0020, '"' - 1).discard(),
+    mecha.utf8.range('"' + 1, '\\' - 1).discard(),
+    mecha.utf8.range('\\' + 1, 0x10FFFF).discard(),
+    mecha.combine(.{
+        mecha.utf8.char('\\').discard(),
+        escape,
+    }).discard(),
 });
 
 const escape = mecha.oneOf(.{
@@ -74,62 +81,64 @@ const escape = mecha.oneOf(.{
 
 const hex = mecha.oneOf(.{
     jdigit,
-    mecha.discard(mecha.utf8.range('a', 'f')),
-    mecha.discard(mecha.utf8.range('A', 'F')),
+    mecha.utf8.range('a', 'f').discard(),
+    mecha.utf8.range('A', 'F').discard(),
 });
 
 const integer = mecha.oneOf(.{
     mecha.combine(.{ onenine, digits }),
     jdigit,
-    mecha.combine(.{ mecha.discard(mecha.utf8.char('-')), onenine, digits }),
-    mecha.combine(.{ mecha.discard(mecha.utf8.char('-')), jdigit }),
+    mecha.combine(.{ mecha.utf8.char('-').discard(), onenine, digits }),
+    mecha.combine(.{ mecha.utf8.char('-').discard(), jdigit }),
 });
 
-const digits = mecha.discard(mecha.many(jdigit, .{ .collect = false, .min = 1 }));
+const digits = jdigit.many(.{ .collect = false, .min = 1 }).discard();
 
 const jdigit = mecha.oneOf(.{
-    mecha.discard(mecha.utf8.char('0')),
+    mecha.utf8.char('0').discard(),
     onenine,
 });
 
-const onenine = mecha.discard(mecha.utf8.range('1', '9'));
+const onenine = mecha.utf8.range('1', '9').discard();
 
 const fraction = mecha.discard(mecha.opt(
-    mecha.combine(.{ mecha.discard(mecha.utf8.char('.')), digits }),
+    mecha.combine(.{ mecha.utf8.char('.').discard(), digits }),
 ));
 
-const exponent = mecha.discard(mecha.opt(mecha.combine(
-    .{ mecha.discard(mecha.oneOf(.{ mecha.utf8.char('E'), mecha.utf8.char('e') })), sign, digits },
-)));
+const exponent = mecha.combine(.{
+    mecha.oneOf(.{ mecha.utf8.char('E'), mecha.utf8.char('e') }).discard(),
+    sign,
+    digits,
+}).opt().discard();
 
-const sign = mecha.discard(mecha.opt(mecha.oneOf(.{
+const sign = mecha.oneOf(.{
     mecha.utf8.char('+'),
     mecha.utf8.char('-'),
-})));
+}).opt().discard();
 
-const ws = mecha.discard(mecha.many(mecha.oneOf(.{
+const ws = mecha.oneOf(.{
     mecha.utf8.char(0x0020),
     mecha.utf8.char(0x000A),
     mecha.utf8.char(0x000D),
     mecha.utf8.char(0x0009),
-}), .{ .collect = false }));
+}).many(.{ .collect = false }).discard();
 
 fn ok(s: []const u8) !void {
-    const res = json(testing.allocator, s) catch @panic("test failure");
+    const res = json.parse(testing.allocator, s) catch @panic("test failure");
     try testing.expectEqualStrings("", res.rest);
 }
 
 fn err(s: []const u8) !void {
-    try testing.expectError(error.ParserFailed, json(testing.allocator, s));
+    try testing.expectError(error.ParserFailed, json.parse(testing.allocator, s));
 }
 
 fn errNotAllParsed(s: []const u8) !void {
-    const res = json(testing.allocator, s) catch @panic("test failure");
+    const res = json.parse(testing.allocator, s) catch @panic("test failure");
     try testing.expect(res.rest.len != 0);
 }
 
 fn any(s: []const u8) void {
-    _ = json(testing.allocator, s) catch {};
+    _ = json.parse(testing.allocator, s) catch {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

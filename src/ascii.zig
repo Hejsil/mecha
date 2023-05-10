@@ -12,13 +12,13 @@ const testing = std.testing;
 /// the parser will fail.
 pub fn wrap(comptime predicate: *const fn (u8) bool) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
-    return struct {
-        fn func(_: mem.Allocator, str: []const u8) mecha.Error!Res {
+    return .{ .parse = struct {
+        fn parse(_: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0 or !predicate(str[0]))
                 return error.ParserFailed;
             return Res{ .value = str[0], .rest = str[1..] };
         }
-    }.func;
+    }.parse };
 }
 
 pub fn charPred(comptime a: u8) *const fn (u8) bool {
@@ -64,19 +64,19 @@ pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
 /// `parser` fails to parse the input string.
 pub fn not(comptime parser: anytype) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
-    return struct {
-        fn res(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
+    return .{ .parse = struct {
+        fn parse(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
 
-            _ = parser(allocator, str) catch |e| switch (e) {
+            _ = parser.parse(allocator, str) catch |e| switch (e) {
                 error.ParserFailed => return Res{ .value = str[0], .rest = str[1..] },
                 else => return e,
             };
 
             return error.ParserFailed;
         }
-    }.res;
+    }.parse };
 }
 
 test "not" {
@@ -154,12 +154,12 @@ fn testWithPredicate(parser: anytype, pred: *const fn (u8) bool) !void {
     for ([_]void{{}} ** 255, 0..) |_, i| {
         const c = @intCast(u8, i);
         if (pred(c)) switch (@TypeOf(parser)) {
-            mecha.Parser(u8) => try mecha.expectResult(u8, .{ .value = c }, parser(allocator, &[_]u8{c})),
-            mecha.Parser(void) => try mecha.expectResult(void, .{ .value = {} }, parser(allocator, &[_]u8{c})),
+            mecha.Parser(u8) => try mecha.expectResult(u8, .{ .value = c }, parser.parse(allocator, &[_]u8{c})),
+            mecha.Parser(void) => try mecha.expectResult(void, .{ .value = {} }, parser.parse(allocator, &[_]u8{c})),
             else => comptime unreachable,
         } else switch (@TypeOf(parser)) {
-            mecha.Parser(u8) => try mecha.expectResult(u8, error.ParserFailed, parser(allocator, &[_]u8{c})),
-            mecha.Parser(void) => try mecha.expectResult(void, error.ParserFailed, parser(allocator, &[_]u8{c})),
+            mecha.Parser(u8) => try mecha.expectResult(u8, error.ParserFailed, parser.parse(allocator, &[_]u8{c})),
+            mecha.Parser(void) => try mecha.expectResult(void, error.ParserFailed, parser.parse(allocator, &[_]u8{c})),
             else => comptime unreachable,
         }
     }

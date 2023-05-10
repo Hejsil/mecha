@@ -12,8 +12,8 @@ const unicode = std.unicode;
 /// the parser will fail.
 pub fn wrap(comptime predicate: *const fn (u21) bool) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
-    return struct {
-        fn func(_: mem.Allocator, str: []const u8) mecha.Error!Res {
+    return .{ .parse = struct {
+        fn parse(_: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
             const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
@@ -25,7 +25,7 @@ pub fn wrap(comptime predicate: *const fn (u21) bool) mecha.Parser(u21) {
                 return error.ParserFailed;
             return Res{ .value = cp, .rest = str[cp_len..] };
         }
-    }.func;
+    }.parse };
 }
 
 /// Constructs a parser that only succeeds if the string starts with `c`.
@@ -39,13 +39,13 @@ pub fn char(comptime c: u21) mecha.Parser(u21) {
 
 test "char" {
     const allocator = testing.failing_allocator;
-    try mecha.expectResult(u21, .{ .value = 'a', .rest = "" }, char('a')(allocator, "a"));
-    try mecha.expectResult(u21, .{ .value = 'a', .rest = "a" }, char('a')(allocator, "aa"));
-    try mecha.expectResult(u21, error.ParserFailed, char('a')(allocator, "ba"));
-    try mecha.expectResult(u21, error.ParserFailed, char('a')(allocator, ""));
-    try mecha.expectResult(u21, .{ .value = 'Ā', .rest = "ā" }, char(0x100)(allocator, "Āā"));
-    try mecha.expectResult(u21, error.ParserFailed, char(0x100)(allocator, ""));
-    try mecha.expectResult(u21, error.ParserFailed, char(0x100)(allocator, "\xc0"));
+    try mecha.expectResult(u21, .{ .value = 'a', .rest = "" }, char('a').parse(allocator, "a"));
+    try mecha.expectResult(u21, .{ .value = 'a', .rest = "a" }, char('a').parse(allocator, "aa"));
+    try mecha.expectResult(u21, error.ParserFailed, char('a').parse(allocator, "ba"));
+    try mecha.expectResult(u21, error.ParserFailed, char('a').parse(allocator, ""));
+    try mecha.expectResult(u21, .{ .value = 'Ā', .rest = "ā" }, char(0x100).parse(allocator, "Āā"));
+    try mecha.expectResult(u21, error.ParserFailed, char(0x100).parse(allocator, ""));
+    try mecha.expectResult(u21, error.ParserFailed, char(0x100).parse(allocator, "\xc0"));
 }
 
 /// Constructs a parser that only succeeds if the string starts with
@@ -64,28 +64,28 @@ pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
 
 test "range" {
     const allocator = testing.failing_allocator;
-    try mecha.expectResult(u21, .{ .value = 'a', .rest = "" }, range('a', 'z')(allocator, "a"));
-    try mecha.expectResult(u21, .{ .value = 'c', .rest = "" }, range('a', 'z')(allocator, "c"));
-    try mecha.expectResult(u21, .{ .value = 'z', .rest = "" }, range('a', 'z')(allocator, "z"));
-    try mecha.expectResult(u21, .{ .value = 'a', .rest = "a" }, range('a', 'z')(allocator, "aa"));
-    try mecha.expectResult(u21, .{ .value = 'c', .rest = "a" }, range('a', 'z')(allocator, "ca"));
-    try mecha.expectResult(u21, .{ .value = 'z', .rest = "a" }, range('a', 'z')(allocator, "za"));
-    try mecha.expectResult(u21, error.ParserFailed, range('a', 'z')(allocator, "1"));
-    try mecha.expectResult(u21, error.ParserFailed, range('a', 'z')(allocator, ""));
-    try mecha.expectResult(u21, .{ .value = 0x100, .rest = "ā" }, range(0x100, 0x100)(allocator, "Āā"));
-    try mecha.expectResult(u21, error.ParserFailed, range(0x100, 0x100)(allocator, "aa"));
-    try mecha.expectResult(u21, error.ParserFailed, range(0x100, 0x100)(allocator, "\xc0"));
+    try mecha.expectResult(u21, .{ .value = 'a', .rest = "" }, range('a', 'z').parse(allocator, "a"));
+    try mecha.expectResult(u21, .{ .value = 'c', .rest = "" }, range('a', 'z').parse(allocator, "c"));
+    try mecha.expectResult(u21, .{ .value = 'z', .rest = "" }, range('a', 'z').parse(allocator, "z"));
+    try mecha.expectResult(u21, .{ .value = 'a', .rest = "a" }, range('a', 'z').parse(allocator, "aa"));
+    try mecha.expectResult(u21, .{ .value = 'c', .rest = "a" }, range('a', 'z').parse(allocator, "ca"));
+    try mecha.expectResult(u21, .{ .value = 'z', .rest = "a" }, range('a', 'z').parse(allocator, "za"));
+    try mecha.expectResult(u21, error.ParserFailed, range('a', 'z').parse(allocator, "1"));
+    try mecha.expectResult(u21, error.ParserFailed, range('a', 'z').parse(allocator, ""));
+    try mecha.expectResult(u21, .{ .value = 0x100, .rest = "ā" }, range(0x100, 0x100).parse(allocator, "Āā"));
+    try mecha.expectResult(u21, error.ParserFailed, range(0x100, 0x100).parse(allocator, "aa"));
+    try mecha.expectResult(u21, error.ParserFailed, range(0x100, 0x100).parse(allocator, "\xc0"));
 }
 
 /// Creates a parser that succeeds and parses one utf8 codepoint if
 /// `parser` fails to parse the input string.
 pub fn not(comptime parser: anytype) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
-    return struct {
-        fn res(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
+    return .{ .parse = struct {
+        fn parse(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
             if (str.len == 0)
                 return error.ParserFailed;
-            if (parser(allocator, str)) |_| {
+            if (parser.parse(allocator, str)) |_| {
                 return error.ParserFailed;
             } else |e| switch (e) {
                 error.ParserFailed => {},
@@ -99,7 +99,7 @@ pub fn not(comptime parser: anytype) mecha.Parser(u21) {
             const cp = unicode.utf8Decode(str[0..cp_len]) catch return error.ParserFailed;
             return Res{ .value = cp, .rest = str[cp_len..] };
         }
-    }.res;
+    }.parse };
 }
 
 test "not" {
@@ -109,8 +109,8 @@ test "not" {
     while (i <= math.maxInt(u7)) : (i += 1) {
         const c = @intCast(u8, i);
         switch (c) {
-            'a'...'z' => try mecha.expectResult(u21, error.ParserFailed, p(allocator, &[_]u8{c})),
-            else => try mecha.expectResult(u21, .{ .value = c, .rest = "" }, p(allocator, &[_]u8{c})),
+            'a'...'z' => try mecha.expectResult(u21, error.ParserFailed, p.parse(allocator, &[_]u8{c})),
+            else => try mecha.expectResult(u21, .{ .value = c, .rest = "" }, p.parse(allocator, &[_]u8{c})),
         }
     }
 }

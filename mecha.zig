@@ -69,14 +69,14 @@ fn ParserResult(comptime P: type) type {
     };
 }
 
+/// A parser that always succeeds and parses nothing. This parser
+/// is only really useful for generic code. See `many`.
 pub const noop = Parser(void){ .parse = struct {
     fn parse(_: mem.Allocator, str: []const u8) Error!Void {
         return Void{ .value = {}, .rest = str };
     }
 }.parse };
 
-/// A parser that always succeeds and parses nothing. This parser
-/// is only really useful for generic code. See `many`.
 /// A parser that only succeeds on the end of the string.
 pub const eos = Parser(void){ .parse = struct {
     fn parse(_: mem.Allocator, str: []const u8) Error!Void {
@@ -108,22 +108,22 @@ test "rest" {
 
 /// Construct a parser that succeeds if the string passed in starts
 /// with `str`.
-pub fn string(comptime str: []const u8) Parser(void) {
+pub fn string(comptime str: []const u8) Parser([]const u8) {
     return .{ .parse = struct {
-        fn parse(_: mem.Allocator, s: []const u8) Error!Void {
+        fn parse(_: mem.Allocator, s: []const u8) Error!Result([]const u8) {
             if (!mem.startsWith(u8, s, str))
                 return error.ParserFailed;
-            return Void{ .value = {}, .rest = s[str.len..] };
+            return Result([]const u8){ .value = str, .rest = s[str.len..] };
         }
     }.parse };
 }
 
 test "string" {
     const allocator = testing.failing_allocator;
-    try expectResult(void, .{ .value = {} }, string("aa").parse(allocator, "aa"));
-    try expectResult(void, .{ .value = {}, .rest = "a" }, string("aa").parse(allocator, "aaa"));
-    try expectResult(void, error.ParserFailed, string("aa").parse(allocator, "ba"));
-    try expectResult(void, error.ParserFailed, string("aa").parse(allocator, ""));
+    try expectResult([]const u8, .{ .value = "aa" }, string("aa").parse(allocator, "aa"));
+    try expectResult([]const u8, .{ .value = "aa", .rest = "a" }, string("aa").parse(allocator, "aaa"));
+    try expectResult([]const u8, error.ParserFailed, string("aa").parse(allocator, "ba"));
+    try expectResult([]const u8, error.ParserFailed, string("aa").parse(allocator, ""));
 }
 
 pub const ManyNOptions = struct {

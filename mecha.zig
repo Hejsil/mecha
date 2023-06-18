@@ -769,7 +769,7 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
             if (str.len == 0)
                 return error.ParserFailed;
 
-            const max_digits = math.min(str.len, options.max_digits);
+            const max_digits = @min(str.len, options.max_digits);
             const first = fmt.charToDigit(str[0], options.base) catch return error.ParserFailed;
             const first_casted = math.cast(Int, first) orelse return error.ParserFailed;
 

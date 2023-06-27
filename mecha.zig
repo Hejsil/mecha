@@ -709,7 +709,7 @@ test "discard" {
 fn digitsForBase(val: anytype, base: u8) usize {
     var res: usize = 0;
     var tmp = val;
-    while (tmp != 0) : (tmp /= @intCast(@TypeOf(val), base))
+    while (tmp != 0) : (tmp /= @intCast(base))
         res += 1;
     return math.max(1, res);
 }

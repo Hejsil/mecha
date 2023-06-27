@@ -107,7 +107,7 @@ test "not" {
     const p = not(comptime range('a', 'z'));
     var i: u16 = 0;
     while (i <= math.maxInt(u7)) : (i += 1) {
-        const c = @intCast(u8, i);
+        const c: u8 = @intCast(i);
         switch (c) {
             'a'...'z' => try mecha.expectResult(u21, error.ParserFailed, p.parse(allocator, &[_]u8{c})),
             else => try mecha.expectResult(u21, .{ .value = c, .rest = "" }, p.parse(allocator, &[_]u8{c})),

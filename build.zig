@@ -1,13 +1,11 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const Builder = std.build.Builder;
-
-pub fn build(b: *Builder) void {
+pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const module = b.addModule("mecha", .{ .source_file = .{ .path = "mecha.zig" } });
+    const module = b.addModule("mecha", .{ .root_source_file = .{ .path = "mecha.zig" } });
 
     const test_step = b.step("test", "Run all tests in all modes.");
     for ([_][]const u8{
@@ -21,7 +19,7 @@ pub fn build(b: *Builder) void {
             .target = target,
         });
         const run_tests = b.addRunArtifact(tests);
-        tests.addModule("mecha", module);
+        tests.root_module.addImport("mecha", module);
         test_step.dependOn(&run_tests.step);
     }
 
@@ -36,14 +34,14 @@ pub fn build(b: *Builder) void {
     b.default_step.dependOn(all_step);
 }
 
-fn readMeStep(b: *Builder) *std.build.Step {
-    const s = b.allocator.create(std.build.Step) catch unreachable;
-    s.* = std.build.Step.init(.{
+fn readMeStep(b: *std.Build) *std.Build.Step {
+    const s = b.allocator.create(std.Build.Step) catch unreachable;
+    s.* = std.Build.Step.init(.{
         .id = .custom,
         .name = "ReadMeStep",
         .owner = b,
         .makeFn = struct {
-            fn make(_: *std.build.Step, _: *std.Progress.Node) anyerror!void {
+            fn make(_: *std.Build.Step, _: *std.Progress.Node) anyerror!void {
                 @setEvalBranchQuota(10000);
                 const file = try std.fs.cwd().createFile("README.md", .{});
                 const writer = file.writer();

@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const module = b.addModule("mecha", .{ .root_source_file = .{ .path = "mecha.zig" } });
+    const module = b.addModule("mecha", .{ .root_source_file = b.path("mecha.zig") });
 
     const test_step = b.step("test", "Run all tests in all modes.");
     for ([_][]const u8{
@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
         "example/json.zig",
     }) |test_file| {
         const tests = b.addTest(.{
-            .root_source_file = .{ .path = test_file },
+            .root_source_file = b.path(test_file),
             .optimize = optimize,
             .target = target,
         });

@@ -1,3 +1,2 @@
-zig-cache
-deps.zig
-gyro.lock
+.zig-cache
+zig-out

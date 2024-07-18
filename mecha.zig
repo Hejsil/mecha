@@ -20,7 +20,15 @@ pub fn Parser(comptime _T: type) type {
 
         parse: *const fn (mem.Allocator, []const u8) Error!Result(T),
 
-        pub usingnamespace mecha;
+        pub const asStr = mecha.asStr;
+        pub const convert = mecha.convert;
+        pub const digit = mecha.digit;
+        pub const discard = mecha.discard;
+        pub const many = mecha.many;
+        pub const manyN = mecha.manyN;
+        pub const mapConst = mecha.mapConst;
+        pub const map = mecha.map;
+        pub const opt = mecha.opt;
     };
 }
 

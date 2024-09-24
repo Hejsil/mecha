@@ -672,41 +672,31 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
     }.func;
 }
 
-/// Constructs a conversion function for `map` that takes a tuple or an array
-/// and converts it into an instance of a tagged union struct `T`, using the
-/// enum `index` to determine the member struct the union. This function will
-/// give a compile error if the type at `index` in `T` and the tuple do not
-/// have the same number of fields or if the items of the tuple cannot be
-/// coerced into the fields of the struct.
-fn toUnion(comptime T: type, comptime index: anytype) ToStructResult(T) {
+/// Constructs a conversion function for `map` that, given a union type `T`
+/// indexed by an enum as well as an instance of that enum, will create an
+/// instance of `T` with the value being mapped over at `index`.
+pub fn unionInit(comptime T: type, comptime index: anytype) ToStructResult(T) {
     return struct {
-        fn func(tuple: anytype) T {
-            const info = @typeInfo(T);
-            const union_fields = info.@"union".fields;
-            const enum_name = @tagName(index);
-
-            inline for (union_fields) |field| {
-                if (comptime std.mem.eql(u8, field.name, enum_name)) {
-                    const sub_struct_info = @typeInfo(field.type);
-                    const sub_struct_fields = sub_struct_info.@"struct".fields;
-
-                    if (sub_struct_fields.len != tuple.len)
-                        @compileError(@typeName(T) ++ "(" ++ enum_name ++ ") and " ++ @typeName(@TypeOf(tuple)) ++ " does not have " ++
-                            "same number of fields. Conversion is not possible.");
-
-                    var sub_struct: field.type = undefined;
-
-                    inline for (sub_struct_fields, 0..) |sub_field, i| {
-                        @field(sub_struct, sub_field.name) = tuple[i];
-                    }
-
-                    return @unionInit(T, enum_name, sub_struct);
-                }
-            }
-
-            @compileError("Failed to find enum in union type");
+        fn func(x: anytype) T {
+            return @unionInit(T, @tagName(index), x);
         }
     }.func;
+}
+
+/// Gets the type of a sub-struct of a tagged union at a given enum index.
+/// This function is useful for tagged unions with anonymous sub-structs.
+pub fn unionSubtype(comptime T: type, comptime index: anytype) type {
+    const info = @typeInfo(T);
+    const union_fields = info.@"union".fields;
+    const enum_name = @tagName(index);
+
+    inline for (union_fields) |field| {
+        if (comptime std.mem.eql(u8, field.name, enum_name)) {
+            return field.type;
+        }
+    }
+
+    @compileError("Failed to find enum in union type");
 }
 
 test "map" {
@@ -723,6 +713,7 @@ test "map" {
         name: []const u8,
         age: u32,
     } };
+    const Person = unionSubtype(Message, MessageType.person);
     const parser1 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),
@@ -732,12 +723,12 @@ test "map" {
         int(usize, .{}),
         ascii.char(' ').discard(),
         int(usize, .{}),
-    }).map(toUnion(Message, MessageType.point));
+    }).map(toStruct(Point)).map(unionInit(Message, MessageType.point));
     const person_parser = comptime combine(.{
         many(ascii.alphabetic, .{ .min = 1, .collect = false }),
         ascii.char(' ').discard(),
         int(u32, .{}),
-    }).map(toUnion(Message, MessageType.person));
+    }).map(toStruct(Person)).map(unionInit(Message, MessageType.person));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser1.parse(allocator, "10 10"));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1.parse(allocator, "20 20aa"));
     try expectResult(Point, error.ParserFailed, parser1.parse(allocator, "12"));

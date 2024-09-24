@@ -672,20 +672,79 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
     }.func;
 }
 
+/// Constructs a conversion function for `map` that takes a tuple or an array
+/// and converts it into an instance of a tagged union struct `T`, using the
+/// enum `index` to determine the member struct the union. This function will
+/// give a compile error if the type at `index` in `T` and the tuple do not
+/// have the same number of fields or if the items of the tuple cannot be
+/// coerced into the fields of the struct.
+fn toUnion(comptime T: type, comptime index: anytype) ToStructResult(T) {
+    return struct {
+        fn func(tuple: anytype) T {
+            const info = @typeInfo(T);
+            const union_fields = info.@"union".fields;
+            const enum_name = @tagName(index);
+
+            inline for (union_fields) |field| {
+                if (comptime std.mem.eql(u8, field.name, enum_name)) {
+                    const sub_struct_info = @typeInfo(field.type);
+                    const sub_struct_fields = sub_struct_info.@"struct".fields;
+
+                    if (sub_struct_fields.len != tuple.len)
+                        @compileError(@typeName(T) ++ "(" ++ enum_name ++ ") and " ++ @typeName(@TypeOf(tuple)) ++ " does not have " ++
+                            "same number of fields. Conversion is not possible.");
+
+                    var sub_struct: field.type = undefined;
+
+                    inline for (sub_struct_fields, 0..) |sub_field, i| {
+                        @field(sub_struct, sub_field.name) = tuple[i];
+                    }
+
+                    return @unionInit(T, enum_name, sub_struct);
+                }
+            }
+
+            @compileError("Failed to find enum in union type");
+        }
+    }.func;
+}
+
 test "map" {
     const allocator = testing.failing_allocator;
     const Point = struct {
         x: usize,
         y: usize,
     };
+    const MessageType = enum {
+        point,
+        person,
+    };
+    const Message = union(MessageType) { point: Point, person: struct {
+        name: []const u8,
+        age: u32,
+    } };
     const parser1 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),
         int(usize, .{}),
     }).map(toStruct(Point));
+    const point_parser = comptime combine(.{
+        int(usize, .{}),
+        ascii.char(' ').discard(),
+        int(usize, .{}),
+    }).map(toUnion(Message, MessageType.point));
+    const person_parser = comptime combine(.{
+        many(ascii.alphabetic, .{ .min = 1, .collect = false }),
+        ascii.char(' ').discard(),
+        int(u32, .{}),
+    }).map(toUnion(Message, MessageType.person));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser1.parse(allocator, "10 10"));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1.parse(allocator, "20 20aa"));
     try expectResult(Point, error.ParserFailed, parser1.parse(allocator, "12"));
+    try expectResult(Message, .{ .value = .{ .point = .{ .x = 20, .y = 20 } } }, point_parser.parse(allocator, "20 20"));
+    const person_result = try person_parser.parse(allocator, "Bob 24");
+    try testing.expectEqualStrings("Bob", person_result.value.person.name);
+    try testing.expectEqual(24, person_result.value.person.age);
 
     const parser2 = comptime combine(.{
         int(usize, .{}),

@@ -672,6 +672,16 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
     }.func;
 }
 
+/// Constructs a conversion function for `map` that initializes a union `T`
+/// with the value passed to it using `@unionInit` with the tag `tag`.
+pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag_type.?) ToStructResult(T) {
+    return struct {
+        fn func(x: anytype) T {
+            return @unionInit(T, @tagName(tag), x);
+        }
+    }.func;
+}
+
 test "map" {
     const allocator = testing.failing_allocator;
     const Point = struct {
@@ -696,6 +706,31 @@ test "map" {
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser2.parse(allocator, "10 10 "));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2.parse(allocator, "20 20 aa"));
     try expectResult(Point, error.ParserFailed, parser2.parse(allocator, "12"));
+
+    const Person = struct {
+        name: []const u8,
+        age: u32,
+    };
+    const MessageType = enum {
+        point,
+        person,
+    };
+    const Message = union(MessageType) { point: Point, person: Person };
+    const point_parser = comptime combine(.{
+        int(usize, .{}),
+        ascii.char(' ').discard(),
+        int(usize, .{}),
+    }).map(toStruct(Point)).map(unionInit(Message, MessageType.point));
+    try expectResult(Message, .{ .value = .{ .point = .{ .x = 20, .y = 20 } } }, point_parser.parse(allocator, "20 20"));
+
+    const person_parser = comptime combine(.{
+        many(ascii.alphabetic, .{ .min = 1, .collect = false }),
+        ascii.char(' ').discard(),
+        int(u32, .{}),
+    }).map(toStruct(Person)).map(unionInit(Message, MessageType.person));
+    const person_result = try person_parser.parse(allocator, "Bob 24");
+    try testing.expectEqualStrings("Bob", person_result.value.person.name);
+    try testing.expectEqual(24, person_result.value.person.age);
 }
 
 /// Constructs a parser that discards the result returned from the parser

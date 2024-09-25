@@ -672,10 +672,9 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
     }.func;
 }
 
-/// Constructs a conversion function for `map` that, given a union type `T`
-/// indexed by an enum as well as an instance of that enum, will create an
-/// instance of `T` with the value being mapped over at `index`.
-pub fn unionInit(comptime T: type, comptime index: anytype) ToStructResult(T) {
+/// Constructs a conversion function for `map` that initializes a union `T`
+/// with the value passed to it using `@unionInit` with the tag `tag`.
+pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag.?) ToStructResult(T) {
     return struct {
         fn func(x: anytype) T {
             return @unionInit(T, @tagName(index), x);

@@ -674,10 +674,10 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
 
 /// Constructs a conversion function for `map` that initializes a union `T`
 /// with the value passed to it using `@unionInit` with the tag `tag`.
-pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag.?) ToStructResult(T) {
+pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag_type.?) ToStructResult(T) {
     return struct {
         fn func(x: anytype) T {
-            return @unionInit(T, @tagName(index), x);
+            return @unionInit(T, @tagName(tag), x);
         }
     }.func;
 }

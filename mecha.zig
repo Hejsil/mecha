@@ -682,22 +682,6 @@ pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag_type.
     }.func;
 }
 
-/// Gets the type of a sub-struct of a tagged union at a given enum index.
-/// This function is useful for tagged unions with anonymous sub-structs.
-pub fn unionSubtype(comptime T: type, comptime index: anytype) type {
-    const info = @typeInfo(T);
-    const union_fields = info.@"union".fields;
-    const enum_name = @tagName(index);
-
-    inline for (union_fields) |field| {
-        if (comptime std.mem.eql(u8, field.name, enum_name)) {
-            return field.type;
-        }
-    }
-
-    @compileError("Failed to find enum in union type");
-}
-
 test "map" {
     const allocator = testing.failing_allocator;
     const Point = struct {
@@ -708,11 +692,11 @@ test "map" {
         point,
         person,
     };
-    const Message = union(MessageType) { point: Point, person: struct {
+    const Person = struct {
         name: []const u8,
         age: u32,
-    } };
-    const Person = unionSubtype(Message, MessageType.person);
+    };
+    const Message = union(MessageType) { point: Point, person: Person };
     const parser1 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),

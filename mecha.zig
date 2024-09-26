@@ -688,37 +688,14 @@ test "map" {
         x: usize,
         y: usize,
     };
-    const MessageType = enum {
-        point,
-        person,
-    };
-    const Person = struct {
-        name: []const u8,
-        age: u32,
-    };
-    const Message = union(MessageType) { point: Point, person: Person };
     const parser1 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),
         int(usize, .{}),
     }).map(toStruct(Point));
-    const point_parser = comptime combine(.{
-        int(usize, .{}),
-        ascii.char(' ').discard(),
-        int(usize, .{}),
-    }).map(toStruct(Point)).map(unionInit(Message, MessageType.point));
-    const person_parser = comptime combine(.{
-        many(ascii.alphabetic, .{ .min = 1, .collect = false }),
-        ascii.char(' ').discard(),
-        int(u32, .{}),
-    }).map(toStruct(Person)).map(unionInit(Message, MessageType.person));
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser1.parse(allocator, "10 10"));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1.parse(allocator, "20 20aa"));
     try expectResult(Point, error.ParserFailed, parser1.parse(allocator, "12"));
-    try expectResult(Message, .{ .value = .{ .point = .{ .x = 20, .y = 20 } } }, point_parser.parse(allocator, "20 20"));
-    const person_result = try person_parser.parse(allocator, "Bob 24");
-    try testing.expectEqualStrings("Bob", person_result.value.person.name);
-    try testing.expectEqual(24, person_result.value.person.age);
 
     const parser2 = comptime combine(.{
         int(usize, .{}),
@@ -729,6 +706,30 @@ test "map" {
     try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser2.parse(allocator, "10 10 "));
     try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2.parse(allocator, "20 20 aa"));
     try expectResult(Point, error.ParserFailed, parser2.parse(allocator, "12"));
+
+    const MessageType = enum {
+        point,
+        person,
+    };
+    const Person = struct {
+        name: []const u8,
+        age: u32,
+    };
+    const Message = union(MessageType) { point: Point, person: Person };
+    const point_parser = comptime combine(.{
+        int(usize, .{}),
+        ascii.char(' ').discard(),
+        int(usize, .{}),
+    }).map(toStruct(Point)).map(unionInit(Message, MessageType.point));
+    const person_parser = comptime combine(.{
+        many(ascii.alphabetic, .{ .min = 1, .collect = false }),
+        ascii.char(' ').discard(),
+        int(u32, .{}),
+    }).map(toStruct(Person)).map(unionInit(Message, MessageType.person));
+    try expectResult(Message, .{ .value = .{ .point = .{ .x = 20, .y = 20 } } }, point_parser.parse(allocator, "20 20"));
+    const person_result = try person_parser.parse(allocator, "Bob 24");
+    try testing.expectEqualStrings("Bob", person_result.value.person.name);
+    try testing.expectEqual(24, person_result.value.person.age);
 }
 
 /// Constructs a parser that discards the result returned from the parser

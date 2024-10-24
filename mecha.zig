@@ -52,11 +52,11 @@ pub const Error = error{ ParserFailed, OtherError } || mem.Allocator.Error;
 fn typecheckParser(comptime P: type) void {
     const err = "expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'";
     const PInner = switch (@typeInfo(P)) {
-        .pointer => |info| info.child,
+        .Pointer => |info| info.child,
         else => P,
     };
 
-    if (@typeInfo(PInner) != .@"struct") @compileError(err);
+    if (@typeInfo(PInner) != .Struct) @compileError(err);
     if (!@hasDecl(PInner, "T")) @compileError(err);
     if (@TypeOf(PInner.T) != type) @compileError(err);
     if (PInner != Parser(PInner.T)) @compileError(err);
@@ -64,15 +64,15 @@ fn typecheckParser(comptime P: type) void {
 
 fn ReturnType(comptime P: type) type {
     return switch (@typeInfo(P)) {
-        .pointer => |p| @typeInfo(p.child).@"fn".return_type.?,
-        .@"fn" => |f| f.return_type.?,
+        .Pointer => |p| @typeInfo(p.child).Fn.return_type.?,
+        .Fn => |f| f.return_type.?,
         else => @compileError(@typeName(P)),
     };
 }
 
 fn ParserResult(comptime P: type) type {
     return switch (@typeInfo(P)) {
-        .pointer => |p| p.child.T,
+        .Pointer => |p| p.child.T,
         else => P.T,
     };
 }
@@ -476,7 +476,7 @@ test "asStr" {
 fn ReturnTypeErrorPayload(comptime P: type) type {
     const return_type = ReturnType(P);
     return switch (@typeInfo(return_type)) {
-        .error_union => |eu| eu.payload,
+        .ErrorUnion => |eu| eu.payload,
         else => return_type,
     };
 }
@@ -658,7 +658,7 @@ fn ToStructResult(comptime T: type) type {
 pub fn toStruct(comptime T: type) ToStructResult(T) {
     return struct {
         fn func(tuple: anytype) T {
-            const struct_fields = @typeInfo(T).@"struct".fields;
+            const struct_fields = @typeInfo(T).Struct.fields;
             if (struct_fields.len != tuple.len)
                 @compileError(@typeName(T) ++ " and " ++ @typeName(@TypeOf(tuple)) ++ " does not have " ++
                     "same number of fields. Conversion is not possible.");
@@ -674,7 +674,7 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
 
 /// Constructs a conversion function for `map` that initializes a union `T`
 /// with the value passed to it using `@unionInit` with the tag `tag`.
-pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag_type.?) ToStructResult(T) {
+pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).Union.tag_type.?) ToStructResult(T) {
     return struct {
         fn func(x: anytype) T {
             return @unionInit(T, @tagName(tag), x);
@@ -889,7 +889,7 @@ pub fn enumeration(comptime Enum: type) Parser(Enum) {
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
             var res: Error!Res = error.ParserFailed;
-            inline for (@typeInfo(Enum).@"enum".fields) |field| next: {
+            inline for (@typeInfo(Enum).Enum.fields) |field| next: {
                 const p = comptime string(field.name);
                 const new = p.parse(allocator, str) catch |err| switch (err) {
                     error.ParserFailed => break :next,
@@ -966,7 +966,7 @@ pub fn expectResult(
     switch (T) {
         []const u8 => try testing.expectEqualStrings(expect.value, actual.value),
         else => switch (@typeInfo(T)) {
-            .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expect.value, actual.value),
+            .Pointer => |ptr| try testing.expectEqualSlices(ptr.child, expect.value, actual.value),
             else => try testing.expectEqual(expect.value, actual.value),
         },
     }

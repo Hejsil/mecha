@@ -41,7 +41,7 @@ fn readMeStep(b: *std.Build) *std.Build.Step {
         .name = "ReadMeStep",
         .owner = b,
         .makeFn = struct {
-            fn make(_: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
+            fn make(_: *std.Build.Step, _: std.Progress.Node) anyerror!void {
                 @setEvalBranchQuota(10000);
                 const file = try std.fs.cwd().createFile("README.md", .{});
                 const writer = file.writer();

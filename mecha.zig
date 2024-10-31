@@ -649,25 +649,31 @@ fn ToStructResult(comptime T: type) type {
     }.func);
 }
 
-/// Constructs a convert function for `map` that takes a tuple or an array and
-/// converts it into the struct `T`. Fields will be assigned in order,
-/// so `tuple[i]` will be assigned to the ith field of `T`. This function
-/// will give a compile error if `T` and the tuple does not have the same
-/// number of fields, or if the items of the tuple cannot be coerced into
+/// Constructs a convert function for `map` that takes a tuple, array or
+// single value and converts it into the struct `T`. Fields will be assigned
+// in order, so `tuple[i]` will be assigned to the ith field of `T`.
+// This function will give a compile error if `T` and the tuple does not have
+// the same number of fields, or if the items of the tuple cannot be coerced into
 /// the fields of the struct.
 pub fn toStruct(comptime T: type) ToStructResult(T) {
     return struct {
-        fn func(tuple: anytype) T {
+        fn func(value: anytype) T {
             const struct_fields = @typeInfo(T).@"struct".fields;
-            if (struct_fields.len != tuple.len)
-                @compileError(@typeName(T) ++ " and " ++ @typeName(@TypeOf(tuple)) ++ " does not have " ++
-                    "same number of fields. Conversion is not possible.");
+            const copy_many = switch (@typeInfo(@TypeOf(value))) {
+                .@"struct" => |info| info.is_tuple and info.fields.len == struct_fields.len,
+                .array => |info| info.len == struct_fields.len,
+                else => false,
+            };
 
             var res: T = undefined;
-            inline for (struct_fields, 0..) |field, i|
-                @field(res, field.name) = tuple[i];
-
-            return res;
+            if (copy_many) {
+                inline for (struct_fields, 0..) |field, i|
+                    @field(res, field.name) = value[i];
+                return res;
+            } else {
+                @field(res, struct_fields[0].name) = value;
+                return res;
+            }
         }
     }.func;
 }
@@ -731,6 +737,13 @@ test "map" {
     const person_result = try person_parser.parse(allocator, "Bob 24");
     try testing.expectEqualStrings("Bob", person_result.value.person.name);
     try testing.expectEqual(24, person_result.value.person.age);
+
+    const Wrapper = struct {
+        value: []const u8,
+    };
+    const wrapper_parser = comptime string("foo").map(toStruct(Wrapper));
+    const wrapper_result = try wrapper_parser.parse(allocator, "foo");
+    try testing.expectEqualStrings("foo", wrapper_result.value.value);
 }
 
 /// Constructs a parser that discards the result returned from the parser

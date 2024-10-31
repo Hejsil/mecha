@@ -671,6 +671,8 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
                     @field(res, field.name) = value[i];
                 return res;
             } else {
+                if (struct_fields.len != 1)
+                    @compileError("Cannot map " ++ @typeName(@TypeOf(value)) ++ " to " ++ @typeName(T));
                 @field(res, struct_fields[0].name) = value;
                 return res;
             }

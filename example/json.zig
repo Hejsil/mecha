@@ -124,21 +124,25 @@ const ws = mecha.oneOf(.{
 }).many(.{ .collect = false }).discard();
 
 fn ok(s: []const u8) !void {
-    const res = json.parse(testing.allocator, s) catch @panic("test failure");
+    var ctx = mecha.Context{};
+    const res = json.parse(testing.allocator, &ctx, s) catch @panic("test failure");
     try testing.expectEqualStrings("", res.rest);
 }
 
 fn err(s: []const u8) !void {
-    try testing.expectError(error.ParserFailed, json.parse(testing.allocator, s));
+    var ctx = mecha.Context{};
+    try testing.expectError(error.ParserFailed, json.parse(testing.allocator, &ctx, s));
 }
 
 fn errNotAllParsed(s: []const u8) !void {
-    const res = json.parse(testing.allocator, s) catch @panic("test failure");
+    var ctx = mecha.Context{};
+    const res = json.parse(testing.allocator, &ctx, s) catch @panic("test failure");
     try testing.expect(res.rest.len != 0);
 }
 
 fn any(s: []const u8) void {
-    _ = json.parse(testing.allocator, s) catch {};
+    var ctx = mecha.Context{};
+    _ = json.parse(testing.allocator, &ctx, s) catch {};
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

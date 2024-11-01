@@ -7,6 +7,7 @@ const mem = std.mem;
 const meta = std.meta;
 const testing = std.testing;
 const unicode = std.unicode;
+const builtin = std.builtin;
 
 pub const ascii = @import("src/ascii.zig");
 pub const utf8 = @import("src/utf8.zig");
@@ -32,22 +33,30 @@ pub fn Parser(comptime _T: type) type {
     };
 }
 
-/// The result of a successful parse
+/// The result of a parse where `ok` corresponds to a successful parse
+/// and `err` denotes a failure. The result will be placed in `value`
+/// and `rest` will contain the unparsed input. On error, `pos` will contain
+/// the position where the parser stopped and the next parser can pick up.
 pub fn Result(comptime T: type) type {
     return struct {
-        pub const Value = T;
+        index: usize,
+        value: union(enum) {
+            ok: T,
+            err,
+        },
 
-        value: T,
-        rest: []const u8 = "",
+        pub fn ok(index: usize, value: T) @This() {
+            return .{ .index = index, .value = .{ .ok = value } };
+        }
+
+        pub fn err(index: usize) @This() {
+            return .{ .index = index, .value = .err };
+        }
     };
 }
 
-pub const Void = Result(void);
-
-/// All the ways in which a parser can fail.
-/// ParserFailed corresponds to the string not matching the expected form and is
-/// the only one `mecha` intrinsically deals with.
-pub const Error = error{ ParserFailed, OtherError } || mem.Allocator.Error;
+// All the ways in which a parser can fail.
+pub const Error = error{OtherError} || mem.Allocator.Error;
 
 fn typecheckParser(comptime P: type) void {
     const err = "expected 'mecha.Parser(T)', found '" ++ @typeName(P) ++ "'";
@@ -80,58 +89,64 @@ fn ParserResult(comptime P: type) type {
 /// A parser that always succeeds and parses nothing. This parser
 /// is only really useful for generic code. See `many`.
 pub const noop = Parser(void){ .parse = struct {
-    fn parse(_: mem.Allocator, str: []const u8) Error!Void {
-        return Void{ .value = {}, .rest = str };
+    const Res = Result(void);
+    fn parse(_: mem.Allocator, _: []const u8) Error!Res {
+        return Res.ok(0, {});
     }
 }.parse };
 
 /// A parser that only succeeds on the end of the string.
 pub const eos = Parser(void){ .parse = struct {
-    fn parse(_: mem.Allocator, str: []const u8) Error!Void {
+    const Res = Result(void);
+    fn parse(_: mem.Allocator, str: []const u8) Error!Res {
         if (str.len != 0)
-            return error.ParserFailed;
-        return Void{ .value = {}, .rest = str };
+            return Res.err(0);
+        return Res.ok(0, {});
     }
 }.parse };
 
 test "eos" {
-    const allocator = testing.failing_allocator;
-    try expectResult(void, .{ .value = {} }, eos.parse(allocator, ""));
-    try expectResult(void, error.ParserFailed, eos.parse(allocator, "a"));
+    const fa = testing.failing_allocator;
+    try expectOk(void, 0, {}, try eos.parse(fa, ""));
+    try expectOk(void, 0, {}, try eos.parse(fa, ""));
+    try expectErr(void, 0, try eos.parse(fa, "a"));
 }
 
 /// A parser that always succeeds with the result being the
 /// entire string. The same as the '.*$' regex.
 pub const rest = Parser([]const u8){ .parse = struct {
-    fn parse(_: mem.Allocator, str: []const u8) Error!Result([]const u8) {
-        return Result([]const u8){ .value = str, .rest = str[str.len..] };
+    const Res = Result([]const u8);
+    fn parse(_: mem.Allocator, str: []const u8) Error!Res {
+        return Res.ok(str.len, str);
     }
 }.parse };
 
 test "rest" {
-    const allocator = testing.failing_allocator;
-    try expectResult([]const u8, .{ .value = "" }, rest.parse(allocator, ""));
-    try expectResult([]const u8, .{ .value = "a" }, rest.parse(allocator, "a"));
+    const fa = testing.failing_allocator;
+    try expectOk([]const u8, 0, "", try rest.parse(fa, ""));
+    try expectOk([]const u8, 1, "a", try rest.parse(fa, "a"));
 }
 
 /// Construct a parser that succeeds if the string passed in starts
 /// with `str`.
 pub fn string(comptime str: []const u8) Parser([]const u8) {
+    const Res = Result([]const u8);
     return .{ .parse = struct {
-        fn parse(_: mem.Allocator, s: []const u8) Error!Result([]const u8) {
+        fn parse(_: mem.Allocator, s: []const u8) Error!Res {
             if (!mem.startsWith(u8, s, str))
-                return error.ParserFailed;
-            return Result([]const u8){ .value = str, .rest = s[str.len..] };
+                return Res.err(0);
+            return Res.ok(str.len, str);
         }
     }.parse };
 }
 
 test "string" {
-    const allocator = testing.failing_allocator;
-    try expectResult([]const u8, .{ .value = "aa" }, string("aa").parse(allocator, "aa"));
-    try expectResult([]const u8, .{ .value = "aa", .rest = "a" }, string("aa").parse(allocator, "aaa"));
-    try expectResult([]const u8, error.ParserFailed, string("aa").parse(allocator, "ba"));
-    try expectResult([]const u8, error.ParserFailed, string("aa").parse(allocator, ""));
+    const fa = testing.failing_allocator;
+    const p = string("aa");
+    try expectOk([]const u8, 2, "aa", try p.parse(fa, "aa"));
+    try expectOk([]const u8, 2, "aa", try p.parse(fa, "aaa"));
+    try expectErr([]const u8, 0, try p.parse(fa, "ba"));
+    try expectErr([]const u8, 0, try p.parse(fa, ""));
 }
 
 pub const ManyNOptions = struct {
@@ -147,35 +162,46 @@ pub fn manyN(
     comptime n: usize,
     comptime options: ManyNOptions,
 ) Parser([n]ParserResult(@TypeOf(parser))) {
-    const Array = [n]ParserResult(@TypeOf(parser));
+    const T = @TypeOf(parser);
+    const Array = [n]ParserResult(T);
     const Res = Result(Array);
-    return .{ .parse = struct {
-        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            var rem = str;
-            var res: Array = undefined;
-            for (&res, 0..) |*value, i| {
-                if (i != 0)
-                    rem = (try options.separator.parse(allocator, rem)).rest;
+    return .{
+        .parse = struct {
+            fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
+                var res: Array = undefined;
+                var index: usize = 0;
+                for (&res, 0..) |*value, i| {
+                    if (i != 0) {
+                        const sep = try options.separator.parse(allocator, str[index..]);
+                        index += sep.index;
 
-                const r = try parser.parse(allocator, rem);
-                rem = r.rest;
-                value.* = r.value;
+                        switch (sep.value) {
+                            .err => return Res.err(index),
+                            .ok => {},
+                        }
+                    }
+
+                    const r = try parser.parse(allocator, str[index..]);
+                    index += r.index;
+
+                    switch (r.value) {
+                        .ok => |v| value.* = v,
+                        .err => return Res.err(index),
+                    }
+                }
+                return Res.ok(index, res);
             }
-
-            return Res{ .value = res, .rest = rem };
-        }
-    }.parse };
+        }.parse,
+    };
 }
 
 test "manyN" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime ascii.range('a', 'b')
-        .manyN(3, .{});
-    try expectResult([3]u8, .{ .value = "aba".*, .rest = "bab" }, parser1.parse(allocator, "ababab"));
-
-    const parser2 = comptime ascii.range('a', 'b')
+    const fa = testing.failing_allocator;
+    const p1 = comptime ascii.range('a', 'b').manyN(3, .{});
+    try expectOk([3]u8, 3, "aba".*, try p1.parse(fa, "ababab"));
+    const p2 = comptime ascii.range('a', 'b')
         .manyN(3, .{ .separator = discard(ascii.char(',')) });
-    try expectResult([3]u8, .{ .value = "aba".*, .rest = ",b,a,b" }, parser2.parse(allocator, "a,b,a,b,a,b"));
+    try expectOk([3]u8, 5, "aba".*, try p2.parse(fa, "a,b,a,b,a,b"));
 }
 
 pub const ManyOptions = struct {
@@ -220,76 +246,91 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
             else {};
             errdefer if (options.collect) res.deinit();
 
-            var rem = str;
+            var index: usize = 0;
             var i: usize = 0;
             while (i < options.max) : (i += 1) {
-                const after_seperator = if (i != 0)
-                    (options.separator.parse(allocator, rem) catch break).rest
-                else
-                    rem;
+                var curr = index;
+                if (i != 0) {
+                    const sep = try options.separator.parse(allocator, str[curr..]);
+                    curr += sep.index;
 
-                const r = parser.parse(allocator, after_seperator) catch |e| switch (e) {
-                    error.ParserFailed => break,
-                    else => return e,
-                };
-                rem = r.rest;
-                if (options.collect)
-                    try res.append(r.value);
+                    switch (sep.value) {
+                        .ok => {},
+                        .err => break,
+                    }
+                }
+
+                const r = try parser.parse(allocator, str[curr..]);
+                curr += r.index;
+
+                switch (r.value) {
+                    .ok => |value| {
+                        if (options.collect)
+                            try res.append(value);
+                    },
+                    .err => break,
+                }
+
+                index = curr;
             }
-            if (i < options.min)
-                return error.ParserFailed;
 
-            return Res{
-                .value = if (options.collect) try res.toOwnedSlice() else str[0 .. str.len - rem.len],
-                .rest = rem,
-            };
+            if (i < options.min)
+                return Res.err(index);
+
+            const value = if (options.collect)
+                try res.toOwnedSlice()
+            else
+                str[0..index];
+
+            return Res.ok(index, value);
         }
     }.parse };
 }
 
 test "many" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime string("ab")
-        .many(.{ .collect = false });
-    try expectResult([]const u8, .{ .value = "" }, parser1.parse(allocator, ""));
-    try expectResult([]const u8, .{ .value = "", .rest = "a" }, parser1.parse(allocator, "a"));
-    try expectResult([]const u8, .{ .value = "ab" }, parser1.parse(allocator, "ab"));
-    try expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser1.parse(allocator, "aba"));
-    try expectResult([]const u8, .{ .value = "abab" }, parser1.parse(allocator, "abab"));
-    try expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser1.parse(allocator, "ababa"));
-    try expectResult([]const u8, .{ .value = "ababab" }, parser1.parse(allocator, "ababab"));
+    const fa = testing.failing_allocator;
 
-    const parser2 = comptime string("ab")
+    const p1 = comptime string("ab")
+        .many(.{ .collect = false });
+    try expectOk([]const u8, 0, "", try p1.parse(fa, ""));
+    try expectOk([]const u8, 0, "", try p1.parse(fa, "a"));
+    try expectOk([]const u8, 2, "ab", try p1.parse(fa, "ab"));
+    try expectOk([]const u8, 2, "ab", try p1.parse(fa, "aba"));
+    try expectOk([]const u8, 4, "abab", try p1.parse(fa, "abab"));
+    try expectOk([]const u8, 4, "abab", try p1.parse(fa, "ababa"));
+    try expectOk([]const u8, 6, "ababab", try p1.parse(fa, "ababab"));
+
+    const p2 = comptime string("ab")
         .many(.{ .collect = false, .min = 1, .max = 2 });
-    try expectResult([]const u8, error.ParserFailed, parser2.parse(allocator, ""));
-    try expectResult([]const u8, error.ParserFailed, parser2.parse(allocator, "a"));
-    try expectResult([]const u8, .{ .value = "ab" }, parser2.parse(allocator, "ab"));
-    try expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser2.parse(allocator, "aba"));
-    try expectResult([]const u8, .{ .value = "abab" }, parser2.parse(allocator, "abab"));
-    try expectResult([]const u8, .{ .value = "abab", .rest = "a" }, parser2.parse(allocator, "ababa"));
-    try expectResult([]const u8, .{ .value = "abab", .rest = "ab" }, parser2.parse(allocator, "ababab"));
+    try expectErr([]const u8, 0, try p2.parse(fa, ""));
+    try expectErr([]const u8, 0, try p2.parse(fa, "a"));
+    try expectOk([]const u8, 2, "ab", try p2.parse(fa, "ab"));
+    try expectOk([]const u8, 2, "ab", try p2.parse(fa, "aba"));
+    try expectOk([]const u8, 4, "abab", try p2.parse(fa, "abab"));
+    try expectOk([]const u8, 4, "abab", try p2.parse(fa, "ababa"));
+    try expectOk([]const u8, 4, "abab", try p2.parse(fa, "ababab"));
 
-    const parser3 = comptime string("ab")
+    const p3 = comptime string("ab")
         .many(.{ .collect = false, .separator = discard(ascii.char(',')) });
-    try expectResult([]const u8, .{ .value = "" }, parser3.parse(allocator, ""));
-    try expectResult([]const u8, .{ .value = "", .rest = "a" }, parser3.parse(allocator, "a"));
-    try expectResult([]const u8, .{ .value = "ab" }, parser3.parse(allocator, "ab"));
-    try expectResult([]const u8, .{ .value = "ab", .rest = "a" }, parser3.parse(allocator, "aba"));
-    try expectResult([]const u8, .{ .value = "ab", .rest = "ab" }, parser3.parse(allocator, "abab"));
-    try expectResult([]const u8, .{ .value = "ab,ab" }, parser3.parse(allocator, "ab,ab"));
-    try expectResult([]const u8, .{ .value = "ab,ab", .rest = "," }, parser3.parse(allocator, "ab,ab,"));
+    try expectOk([]const u8, 0, "", try p3.parse(fa, ""));
+    try expectOk([]const u8, 0, "", try p3.parse(fa, "a"));
+    try expectOk([]const u8, 2, "ab", try p3.parse(fa, "aba"));
+    try expectOk([]const u8, 2, "ab", try p3.parse(fa, "abab"));
+    try expectOk([]const u8, 5, "ab,ab", try p3.parse(fa, "ab,ab"));
+    try expectOk([]const u8, 5, "ab,ab", try p3.parse(fa, "ab,ab,"));
 
-    const parser4 = comptime utf8.char(0x100)
+    const p4 = comptime utf8.char(0x100)
         .many(.{ .collect = false });
-    try expectResult([]const u8, .{ .value = "ĀĀĀ", .rest = "āāā" }, parser4.parse(allocator, "ĀĀĀāāā"));
+    try expectOk([]const u8, 6, "ĀĀĀ", try p4.parse(fa, "ĀĀĀāāā"));
 
-    const parser5 = comptime utf8.range(0x100, 0x100)
-        .many(.{});
-    const res = try parser5.parse(testing.allocator, "ĀĀĀāāā");
-    defer testing.allocator.free(res.value);
+    const a = testing.allocator;
+
+    const p5 = comptime utf8.range(0x100, 0x100).many(.{});
+    const res = try p5.parse(a, "ĀĀĀāāā");
+    defer a.free(res.value.ok);
 
     var expect = [_]u21{ 'Ā', 'Ā', 'Ā' };
-    try expectResult([]u21, .{ .value = &expect, .rest = "āāā" }, res);
+    try expectOk([]u21, 6, &expect, res);
 }
 
 /// Construct a parser that will call `parser` on the string
@@ -299,22 +340,21 @@ pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     const Res = Result(?ParserResult(@TypeOf(parser)));
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            const r = parser.parse(allocator, str) catch |e| switch (e) {
-                error.ParserFailed => return Res{ .value = null, .rest = str },
-                else => return e,
+            const res = try parser.parse(allocator, str);
+            return switch (res.value) {
+                .ok => |value| Res.ok(res.index, value),
+                .err => Res.ok(0, null),
             };
-            return Res{ .value = r.value, .rest = r.rest };
         }
     }.parse };
 }
 
 test "opt" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime ascii.range('a', 'z')
-        .opt();
-    try expectResult(?u8, .{ .value = 'a' }, parser1.parse(allocator, "a"));
-    try expectResult(?u8, .{ .value = 'a', .rest = "a" }, parser1.parse(allocator, "aa"));
-    try expectResult(?u8, .{ .value = null, .rest = "1" }, parser1.parse(allocator, "1"));
+    const fa = testing.failing_allocator;
+    const p1 = comptime ascii.range('a', 'z').opt();
+    try expectOk(?u8, 1, 'a', try p1.parse(fa, "a"));
+    try expectOk(?u8, 1, 'a', try p1.parse(fa, "aa"));
+    try expectOk(?u8, 0, null, try p1.parse(fa, "1"));
 }
 
 fn parsersTypes(comptime parsers: anytype) []const type {
@@ -337,7 +377,7 @@ fn Combine(comptime parsers: anytype) type {
 }
 
 /// HACK: Zig cannot cache functions that takes pointers (slices)
-///       so we have to passed the types as an array by value.
+///       so we have to pass the types as an array, by value.
 fn Tuple(comptime n: usize, comptime types: [n]type) type {
     return meta.Tuple(&types);
 }
@@ -345,101 +385,122 @@ fn Tuple(comptime n: usize, comptime types: [n]type) type {
 /// Takes a tuple of `Parser(any)` and constructs a parser that
 /// only succeeds if all parsers succeed to parse. The parsers
 /// will be called in order and parser `N` will use the `rest`
-/// from parser `N-1`. The parsers result will be a `Tuple` of
-/// all parser not of type `Parser(void)`. If only one parser
-/// is not of type `Parser(void)` then this parsers result is
+/// from parser `N-1`. The parse result will be a `Tuple` of
+/// all parsers not of type `Parser(void)`. If only one parser
+/// is not of type `Parser(void)` then this parser's result is
 /// returned instead of a tuple.
 pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
     const types = parsersTypes(parsers);
-    const Res = Result(Combine(parsers));
+    const Value = Combine(parsers);
+    const Res = Result(Value);
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            var res: Res = undefined;
-            res.rest = str;
-
+            var value: Value = undefined;
+            var index: usize = 0;
             comptime var j = 0;
             inline for (parsers) |parser| {
-                const r = try parser.parse(allocator, res.rest);
-                res.rest = r.rest;
+                const res = try parser.parse(allocator, str[index..]);
+                index += res.index;
 
-                if (@TypeOf(r.value) != void) {
+                const v = switch (res.value) {
+                    .ok => |v| v,
+                    .err => return Res.err(index),
+                };
+
+                if (@TypeOf(v) != void) {
                     if (types.len == 1) {
-                        res.value = r.value;
+                        value = v;
                     } else {
-                        res.value[j] = r.value;
+                        value[j] = v;
                     }
                     j += 1;
                 }
             }
-            return res;
+            return Res.ok(index, value);
         }
     }.parse };
 }
 
 test "combine" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime combine(.{
+    const fa = testing.failing_allocator;
+
+    const p1 = comptime combine(.{
         ascii.range('a', 'b').opt(),
         ascii.range('d', 'e').opt(),
     });
-    const Res = ParserResult(@TypeOf(parser1));
-    try expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' } }, parser1.parse(allocator, "ad"));
-    try expectResult(Res, .{ .value = .{ .@"0" = 'a', .@"1" = null }, .rest = "a" }, parser1.parse(allocator, "aa"));
-    try expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = 'd' }, .rest = "a" }, parser1.parse(allocator, "da"));
-    try expectResult(Res, .{ .value = .{ .@"0" = null, .@"1" = null }, .rest = "qa" }, parser1.parse(allocator, "qa"));
+    const P1 = @TypeOf(p1).T;
+    try expectOk(P1, 2, .{ .@"0" = 'a', .@"1" = 'd' }, try p1.parse(fa, "ad"));
+    try expectOk(P1, 1, .{ .@"0" = 'a', .@"1" = null }, try p1.parse(fa, "aa"));
+    try expectOk(P1, 1, .{ .@"0" = null, .@"1" = 'd' }, try p1.parse(fa, "da"));
+    try expectOk(P1, 0, .{ .@"0" = null, .@"1" = null }, try p1.parse(fa, "qa"));
 
-    const parser2 = comptime combine(.{
+    const p2 = comptime combine(.{
         ascii.range('a', 'b').opt(),
         ascii.char('d'),
     });
-    const Res2 = ParserResult(@TypeOf(parser2));
-    try expectResult(Res2, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' } }, parser2.parse(allocator, "ad"));
-    try expectResult(Res2, .{ .value = .{ .@"0" = 'a', .@"1" = 'd' }, .rest = "a" }, parser2.parse(allocator, "ada"));
-    try expectResult(Res2, .{ .value = .{ .@"0" = null, .@"1" = 'd' }, .rest = "a" }, parser2.parse(allocator, "da"));
-    try expectResult(Res2, error.ParserFailed, parser2.parse(allocator, "qa"));
+    const P2 = @TypeOf(p2).T;
+    try expectOk(P2, 2, .{ .@"0" = 'a', .@"1" = 'd' }, try p2.parse(fa, "ad"));
+    try expectOk(P2, 2, .{ .@"0" = 'a', .@"1" = 'd' }, try p2.parse(fa, "ada"));
+    try expectOk(P2, 1, .{ .@"0" = null, .@"1" = 'd' }, try p2.parse(fa, "da"));
+    try expectErr(P2, 0, try p2.parse(fa, "qa"));
+
+    const p3 = comptime combine(.{ascii.char(' ').discard()});
+    const P3 = @TypeOf(p3).T;
+    try expectOk(P3, 1, {}, try p3.parse(fa, " "));
+
+    const p4 = comptime combine(.{
+        int(usize, .{}),
+        ascii.char(' ').discard(),
+    }).asStr();
+    try expectOk([]const u8, 3, "10 ", try p4.parse(fa, "10 "));
+
+    const p5 = comptime combine(.{
+        int(usize, .{}),
+        ascii.char(' ').discard(),
+    }).manyN(2, .{}).asStr();
+    try expectOk([]const u8, 6, "10 10 ", try p5.parse(fa, "10 10 "));
 }
 
 /// Takes a tuple of `Parser(T)` and constructs a parser that
-/// only succeeds if one of the parsers succeed to parse. The
-/// parsers will be called in order all with `str` as input.
-/// The parser will return with the result of the first parser
-/// that succeeded. The parsers result will be `Result(T)`
+/// succeeds when at least one of the child parsers succeeds.
+/// Note that /// parsers will be called in order, with `str`
+/// as input. The parser will return with the type of the first
+// child parser and the result of the first child parser
+/// that succeeds. The parser result will be `Result(T)`.
 pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))) {
     inline for (parsers) |parser|
         typecheckParser(@TypeOf(parser));
-
     return .{ .parse = struct {
-        fn parse(allocator: mem.Allocator, str: []const u8) Error!Result(ParserResult(@TypeOf(parsers[0]))) {
+        const Res = Result(ParserResult(@TypeOf(parsers[0])));
+        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
+            var err_index: usize = 0;
             inline for (parsers) |p| {
-                if (p.parse(allocator, str)) |res| {
-                    return res;
-                } else |e| {
-                    switch (e) {
-                        error.ParserFailed => {},
-                        else => return e,
-                    }
+                const res = try p.parse(allocator, str);
+                switch (res.value) {
+                    .ok => return res,
+                    .err => err_index = @max(err_index, res.index),
                 }
             }
-            return error.ParserFailed;
+            return Res.err(err_index);
         }
     }.parse };
 }
 
 test "oneOf" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime oneOf(.{
+    const fa = testing.failing_allocator;
+    const p1 = comptime oneOf(.{
         ascii.range('a', 'b'),
         ascii.range('d', 'e'),
     });
-    try expectResult(u8, .{ .value = 'a' }, parser1.parse(allocator, "a"));
-    try expectResult(u8, .{ .value = 'b' }, parser1.parse(allocator, "b"));
-    try expectResult(u8, .{ .value = 'd' }, parser1.parse(allocator, "d"));
-    try expectResult(u8, .{ .value = 'e' }, parser1.parse(allocator, "e"));
-    try expectResult(u8, .{ .value = 'a', .rest = "a" }, parser1.parse(allocator, "aa"));
-    try expectResult(u8, .{ .value = 'b', .rest = "a" }, parser1.parse(allocator, "ba"));
-    try expectResult(u8, .{ .value = 'd', .rest = "a" }, parser1.parse(allocator, "da"));
-    try expectResult(u8, .{ .value = 'e', .rest = "a" }, parser1.parse(allocator, "ea"));
-    try expectResult(u8, error.ParserFailed, parser1.parse(allocator, "q"));
+    try expectOk(u8, 1, 'a', try p1.parse(fa, "a"));
+    try expectOk(u8, 1, 'b', try p1.parse(fa, "b"));
+    try expectOk(u8, 1, 'd', try p1.parse(fa, "d"));
+    try expectOk(u8, 1, 'e', try p1.parse(fa, "e"));
+    try expectOk(u8, 1, 'a', try p1.parse(fa, "aa"));
+    try expectOk(u8, 1, 'b', try p1.parse(fa, "ba"));
+    try expectOk(u8, 1, 'd', try p1.parse(fa, "da"));
+    try expectOk(u8, 1, 'e', try p1.parse(fa, "ea"));
+    try expectErr(u8, 0, try p1.parse(fa, "q"));
 }
 
 /// Takes any parser (preferable not of type `Parser([]const u8)`)
@@ -450,27 +511,30 @@ pub fn asStr(comptime parser: anytype) Parser([]const u8) {
     typecheckParser(@TypeOf(parser));
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            const r = try parser.parse(allocator, str);
-            return Res{ .value = str[0 .. str.len - r.rest.len], .rest = r.rest };
+            const res = try parser.parse(allocator, str);
+            return switch (res.value) {
+                .ok => Res.ok(res.index, str[0..res.index]),
+                .err => Res.err(0),
+            };
         }
     }.parse };
 }
 
 test "asStr" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime ascii.char('a').asStr();
-    try expectResult([]const u8, .{ .value = "a" }, parser1.parse(allocator, "a"));
-    try expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser1.parse(allocator, "aa"));
-    try expectResult([]const u8, error.ParserFailed, parser1.parse(allocator, "ba"));
+    const fa = testing.failing_allocator;
+    const p1 = comptime ascii.char('a').asStr();
+    try expectOk([]const u8, 1, "a", try p1.parse(fa, "a"));
+    try expectOk([]const u8, 1, "a", try p1.parse(fa, "aa"));
+    try expectErr([]const u8, 0, try p1.parse(fa, "ba"));
 
-    const parser2 = comptime combine(.{
+    const p2 = comptime combine(.{
         ascii.range('a', 'b').opt(),
         ascii.range('d', 'e').opt(),
     }).asStr();
-    try expectResult([]const u8, .{ .value = "ad" }, parser2.parse(allocator, "ad"));
-    try expectResult([]const u8, .{ .value = "a", .rest = "a" }, parser2.parse(allocator, "aa"));
-    try expectResult([]const u8, .{ .value = "d", .rest = "a" }, parser2.parse(allocator, "da"));
-    try expectResult([]const u8, .{ .value = "", .rest = "qa" }, parser2.parse(allocator, "qa"));
+    try expectOk([]const u8, 2, "ad", try p2.parse(fa, "ad"));
+    try expectOk([]const u8, 1, "a", try p2.parse(fa, "aa"));
+    try expectOk([]const u8, 1, "d", try p2.parse(fa, "da"));
+    try expectOk([]const u8, 0, "", try p2.parse(fa, "qa"));
 }
 
 fn ReturnTypeErrorPayload(comptime P: type) type {
@@ -481,9 +545,11 @@ fn ReturnTypeErrorPayload(comptime P: type) type {
     };
 }
 
+pub const ConvertError = error{ConversionFailed} || Error;
+
 /// Constructs a parser that has its result converted with the
 /// `conv` function. The ´conv` functions signature is
-/// `*const fn (mem.Allocator, ParserResult(parser)) !T`.
+/// `*const fn (mem.Allocator, ParserResult(parser)) ConvertError!T`.
 /// The parser constructed will fail if `conv` fails.
 pub fn convert(
     comptime parser: anytype,
@@ -492,13 +558,17 @@ pub fn convert(
     const Res = Result(ReturnTypeErrorPayload(@TypeOf(conv)));
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            const r = try parser.parse(allocator, str);
-            const v = conv(allocator, r.value) catch |e| switch (@as(anyerror, e)) {
-                error.ParserFailed => return error.ParserFailed,
-                error.OutOfMemory => return error.OutOfMemory,
-                else => return error.OtherError,
-            };
-            return Res{ .value = v, .rest = r.rest };
+            const res = try parser.parse(allocator, str);
+            switch (res.value) {
+                .err => return Res.err(res.index),
+                .ok => |value| {
+                    const v = conv(allocator, value) catch |err| switch (@as(ConvertError, err)) {
+                        error.ConversionFailed => return Res.err(0),
+                        error.OtherError, error.OutOfMemory => |e| return e,
+                    };
+                    return Res.ok(res.index, v);
+                },
+            }
         }
     }.parse };
 }
@@ -508,42 +578,43 @@ pub fn convert(
 pub fn toInt(
     comptime Int: type,
     comptime base: u8,
-) *const fn (mem.Allocator, []const u8) Error!Int {
+) *const fn (mem.Allocator, []const u8) ConvertError!Int {
     return struct {
-        fn func(_: mem.Allocator, str: []const u8) Error!Int {
-            return fmt.parseInt(Int, str, base) catch error.ParserFailed;
+        fn func(_: mem.Allocator, str: []const u8) ConvertError!Int {
+            return fmt.parseInt(Int, str, base) catch return error.ConversionFailed;
         }
     }.func;
 }
 
 /// Constructs a convert function for `convert` that takes a
 /// string and parses it to a float of type `Float`.
-pub fn toFloat(comptime Float: type) *const fn (mem.Allocator, []const u8) Error!Float {
+pub fn toFloat(comptime Float: type) *const fn (mem.Allocator, []const u8) ConvertError!Float {
     return struct {
-        fn func(_: mem.Allocator, str: []const u8) Error!Float {
-            return fmt.parseFloat(Float, str) catch error.ParserFailed;
+        fn func(_: mem.Allocator, str: []const u8) ConvertError!Float {
+            return fmt.parseFloat(Float, str) catch return error.ConversionFailed;
         }
     }.func;
 }
 
 /// A convert function for `convert` that takes a string and
 /// returns the first codepoint.
-pub fn toChar(_: mem.Allocator, str: []const u8) Error!u21 {
-    if (str.len > 1) {
-        const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ParserFailed;
-        if (cp_len > str.len)
-            return error.ParserFailed;
-        return unicode.utf8Decode(str[0..cp_len]) catch error.ParserFailed;
-    }
-    return @as(u21, str[0]);
+pub fn toChar(_: mem.Allocator, str: []const u8) ConvertError!u21 {
+    if (str.len == 0)
+        return error.ConversionFailed;
+
+    const cp_len = unicode.utf8ByteSequenceLength(str[0]) catch return error.ConversionFailed;
+    if (cp_len != str.len)
+        return error.ConversionFailed;
+
+    return unicode.utf8Decode(str[0..cp_len]) catch return error.ConversionFailed;
 }
 
 /// Constructs a convert function for `convert` that takes a
 /// string and converts it to an `Enum` with `std.meta.stringToEnum`.
-pub fn toEnum(comptime Enum: type) *const fn (mem.Allocator, []const u8) Error!Enum {
+pub fn toEnum(comptime Enum: type) *const fn (mem.Allocator, []const u8) ConvertError!Enum {
     return struct {
-        fn func(_: mem.Allocator, str: []const u8) Error!Enum {
-            return std.meta.stringToEnum(Enum, str) orelse error.ParserFailed;
+        fn func(_: mem.Allocator, str: []const u8) ConvertError!Enum {
+            return std.meta.stringToEnum(Enum, str) orelse error.ConversionFailed;
         }
     }.func;
 }
@@ -551,49 +622,50 @@ pub fn toEnum(comptime Enum: type) *const fn (mem.Allocator, []const u8) Error!E
 /// A convert function for `convert` that takes a string
 /// and returns `true` if it is `"true"` and `false` if it
 /// is `"false"`.
-pub fn toBool(allocator: mem.Allocator, str: []const u8) Error!bool {
+pub fn toBool(allocator: mem.Allocator, str: []const u8) ConvertError!bool {
     const r = try toEnum(enum { false, true })(allocator, str);
     return r == .true;
 }
 
 test "convert" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime string("123")
+    const fa = testing.failing_allocator;
+
+    const p1 = comptime string("123")
         .asStr()
         .convert(toInt(u8, 10));
-    try expectResult(u8, .{ .value = 123 }, parser1.parse(allocator, "123"));
-    try expectResult(u8, .{ .value = 123, .rest = "a" }, parser1.parse(allocator, "123a"));
-    try expectResult(u8, error.ParserFailed, parser1.parse(allocator, "12"));
+    try expectOk(u8, 3, 123, try p1.parse(fa, "123"));
+    try expectOk(u8, 3, 123, try p1.parse(fa, "123a"));
+    try expectErr(u8, 0, try p1.parse(fa, "12"));
 
-    const parser2 = comptime string("a")
+    const p2 = comptime string("a")
         .asStr()
         .convert(toChar);
-    try expectResult(u21, .{ .value = 'a' }, parser2.parse(allocator, "a"));
-    try expectResult(u21, .{ .value = 'a', .rest = "a" }, parser2.parse(allocator, "aa"));
-    try expectResult(u21, error.ParserFailed, parser2.parse(allocator, "b"));
+    try expectOk(u21, 1, 'a', try p2.parse(fa, "a"));
+    try expectOk(u21, 1, 'a', try p2.parse(fa, "aa"));
+    try expectErr(u21, 0, try p2.parse(fa, "b"));
 
-    const parser3 = comptime rest.convert(toBool);
-    try expectResult(bool, .{ .value = true }, parser3.parse(allocator, "true"));
-    try expectResult(bool, .{ .value = false }, parser3.parse(allocator, "false"));
-    try expectResult(bool, error.ParserFailed, parser3.parse(allocator, "b"));
+    const p3 = comptime rest.convert(toBool);
+    try expectOk(bool, 4, true, try p3.parse(fa, "true"));
+    try expectOk(bool, 5, false, try p3.parse(fa, "false"));
+    try expectErr(bool, 0, try p3.parse(fa, "b"));
 
-    const parser4 = comptime string("1.23")
+    const p4 = comptime string("1.23")
         .asStr()
         .convert(toFloat(f32));
-    try expectResult(f32, .{ .value = 1.23 }, parser4.parse(allocator, "1.23"));
-    try expectResult(f32, .{ .value = 1.23, .rest = "a" }, parser4.parse(allocator, "1.23a"));
-    try expectResult(f32, error.ParserFailed, parser4.parse(allocator, "1.2"));
+    try expectOk(f32, 4, 1.23, try p4.parse(fa, "1.23"));
+    try expectOk(f32, 4, 1.23, try p4.parse(fa, "1.23a"));
+    try expectErr(f32, 0, try p4.parse(fa, "1.2"));
 
     const E = enum(u8) { a, b, _ };
-    const parser5 = comptime rest.convert(toEnum(E));
-    try expectResult(E, .{ .value = E.a }, parser5.parse(allocator, "a"));
-    try expectResult(E, .{ .value = E.b }, parser5.parse(allocator, "b"));
-    try expectResult(E, error.ParserFailed, parser5.parse(allocator, "2"));
+    const p5 = comptime rest.convert(toEnum(E));
+    try expectOk(E, 1, .a, try p5.parse(fa, "a"));
+    try expectOk(E, 1, .b, try p5.parse(fa, "b"));
+    try expectErr(E, 0, try p5.parse(fa, "2"));
 
-    const parser6 = comptime string("Āā")
+    const p6 = comptime string("Ā")
         .asStr()
         .convert(toChar);
-    try expectResult(u21, .{ .value = 0x100 }, parser6.parse(allocator, "Āā"));
+    try expectOk(u21, 2, 0x100, try p6.parse(fa, "Āā"));
 }
 
 /// Constructs a parser that has its result converted with the
@@ -604,14 +676,20 @@ pub fn map(
     comptime parser: anytype,
     comptime conv: anytype,
 ) Parser(ReturnType(@TypeOf(conv))) {
-    const Res = Result(ReturnType(@TypeOf(conv)));
+    const ConvT = ReturnType(@TypeOf(conv));
+    const Res = Result(ConvT);
     typecheckParser(@TypeOf(parser));
-    return .{ .parse = struct {
-        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            const r = try parser.parse(allocator, str);
-            return Res{ .value = conv(r.value), .rest = r.rest };
-        }
-    }.parse };
+    return .{
+        .parse = struct {
+            fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
+                const res = try parser.parse(allocator, str);
+                return switch (res.value) {
+                    .err => return Res.err(res.index),
+                    .ok => |value| return Res.ok(res.index, conv(value)),
+                };
+            }
+        }.parse,
+    };
 }
 
 /// Constructs a parser that consumes the input with `parser`
@@ -627,18 +705,21 @@ pub fn mapConst(
     typecheckParser(@TypeOf(parser));
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            const r = try parser.parse(allocator, str);
-            return Res{ .value = value, .rest = r.rest };
+            const res = try parser.parse(allocator, str);
+            return switch (res.value) {
+                .ok => Res.ok(res.index, value),
+                .err => Res.err(res.index),
+            };
         }
     }.parse };
 }
 
 test "mapConst" {
-    const allocator = testing.failing_allocator;
-    const parser1 = comptime string("123")
+    const fa = testing.failing_allocator;
+    const p1 = comptime string("123")
         .asStr()
         .mapConst(@as(u8, 3));
-    try expectResult(u8, .{ .value = 3 }, parser1.parse(allocator, "123"));
+    try expectOk(u8, 3, 3, try p1.parse(fa, "123"));
 }
 
 fn ToStructResult(comptime T: type) type {
@@ -664,14 +745,13 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
                 .array => |info| info.len == struct_fields.len,
                 else => false,
             };
-
             var res: T = undefined;
             if (copy_many) {
                 inline for (struct_fields, 0..) |field, i|
                     @field(res, field.name) = value[i];
                 return res;
             } else {
-                if (struct_fields.len != 1)
+                if (struct_fields.len == 0)
                     @compileError("Cannot map " ++ @typeName(@TypeOf(value)) ++ " to " ++ @typeName(T));
                 @field(res, struct_fields[0].name) = value;
                 return res;
@@ -691,29 +771,27 @@ pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag_type.
 }
 
 test "map" {
-    const allocator = testing.failing_allocator;
+    const fa = testing.failing_allocator;
     const Point = struct {
         x: usize,
         y: usize,
     };
-    const parser1 = comptime combine(.{
+    const p1 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),
         int(usize, .{}),
     }).map(toStruct(Point));
-    try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser1.parse(allocator, "10 10"));
-    try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser1.parse(allocator, "20 20aa"));
-    try expectResult(Point, error.ParserFailed, parser1.parse(allocator, "12"));
+    try expectOk(Point, 5, .{ .x = 10, .y = 10 }, try p1.parse(fa, "10 10"));
+    try expectOk(Point, 5, .{ .x = 20, .y = 20 }, try p1.parse(fa, "20 20aa"));
+    try expectErr(Point, 2, try p1.parse(fa, "12"));
 
-    const parser2 = comptime combine(.{
+    const p2 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),
-    })
-        .manyN(2, .{})
-        .map(toStruct(Point));
-    try expectResult(Point, .{ .value = .{ .x = 10, .y = 10 } }, parser2.parse(allocator, "10 10 "));
-    try expectResult(Point, .{ .value = .{ .x = 20, .y = 20 }, .rest = "aa" }, parser2.parse(allocator, "20 20 aa"));
-    try expectResult(Point, error.ParserFailed, parser2.parse(allocator, "12"));
+    }).manyN(2, .{}).map(toStruct(Point));
+    try expectOk(Point, 6, .{ .x = 10, .y = 10 }, try p2.parse(fa, "10 10 "));
+    try expectOk(Point, 6, .{ .x = 20, .y = 20 }, try p2.parse(fa, "20 20 aa"));
+    try expectErr(Point, 2, try p2.parse(fa, "12"));
 
     const Person = struct {
         name: []const u8,
@@ -724,28 +802,31 @@ test "map" {
         person,
     };
     const Message = union(MessageType) { point: Point, person: Person };
-    const point_parser = comptime combine(.{
+    const p3 = comptime combine(.{
         int(usize, .{}),
         ascii.char(' ').discard(),
         int(usize, .{}),
     }).map(toStruct(Point)).map(unionInit(Message, MessageType.point));
-    try expectResult(Message, .{ .value = .{ .point = .{ .x = 20, .y = 20 } } }, point_parser.parse(allocator, "20 20"));
+    try expectOk(Message, 5, .{ .point = .{ .x = 20, .y = 20 } }, try p3.parse(fa, "20 20"));
 
-    const person_parser = comptime combine(.{
+    const p4 = comptime combine(.{
         many(ascii.alphabetic, .{ .min = 1, .collect = false }),
         ascii.char(' ').discard(),
         int(u32, .{}),
     }).map(toStruct(Person)).map(unionInit(Message, MessageType.person));
-    const person_result = try person_parser.parse(allocator, "Bob 24");
-    try testing.expectEqualStrings("Bob", person_result.value.person.name);
-    try testing.expectEqual(24, person_result.value.person.age);
+    const r4 = try p4.parse(fa, "Bob 24");
+    try testing.expect(r4.value == .ok);
+    try testing.expectEqual(@as(usize, 6), r4.index);
+    try testing.expectEqualStrings("Bob", r4.value.ok.person.name);
+    try testing.expectEqual(24, r4.value.ok.person.age);
 
     const Wrapper = struct {
         value: []const u8,
     };
-    const wrapper_parser = comptime string("foo").map(toStruct(Wrapper));
-    const wrapper_result = try wrapper_parser.parse(allocator, "foo");
-    try testing.expectEqualStrings("foo", wrapper_result.value.value);
+    const wp = comptime string("foo").map(toStruct(Wrapper));
+    const wr = try wp.parse(fa, "foo");
+    try testing.expect(wr.value == .ok);
+    try testing.expectEqualStrings("foo", wr.value.ok.value);
 }
 
 /// Constructs a parser that discards the result returned from the parser
@@ -757,11 +838,11 @@ pub fn discard(comptime parser: anytype) Parser(void) {
 }
 
 test "discard" {
-    const allocator = testing.failing_allocator;
-    const parser = comptime ascii.char(' ').many(.{ .collect = false }).discard();
-    try expectResult(void, .{ .value = {}, .rest = "abc" }, parser.parse(allocator, "abc"));
-    try expectResult(void, .{ .value = {}, .rest = "abc" }, parser.parse(allocator, " abc"));
-    try expectResult(void, .{ .value = {}, .rest = "abc" }, parser.parse(allocator, "  abc"));
+    const fa = testing.failing_allocator;
+    const p1 = comptime ascii.char(' ').many(.{ .collect = false }).discard();
+    try expectOk(void, 0, {}, try p1.parse(fa, "abc"));
+    try expectOk(void, 1, {}, try p1.parse(fa, " abc"));
+    try expectOk(void, 2, {}, try p1.parse(fa, "  abc"));
 }
 
 fn digitsForBase(val: anytype, base: u8) usize {
@@ -786,10 +867,9 @@ pub const IntOptions = struct {
 pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
     debug.assert(options.max_digits != 0);
     const sign_parser = if (options.parse_sign)
-        oneOf(.{ ascii.char('-'), ascii.char('+'), noop })
+        oneOf(.{ .ok = .{ ascii.char('-'), ascii.char('+'), noop } })
     else
         noop;
-
     return comptime combine(.{
         sign_parser,
         ascii.digit(options.base).many(.{
@@ -806,17 +886,18 @@ pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
 pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
     debug.assert(options.max_digits != 0);
     const Res = Result(Int);
-
     return .{ .parse = struct {
         fn parse(_: mem.Allocator, str: []const u8) Error!Res {
             if (options.parse_sign and str.len != 0) {
-                switch (str[0]) {
-                    '+' => return parseAfterSign(str[1..], add),
-                    '-' => return parseAfterSign(str[1..], sub),
-                    else => {},
-                }
+                var res = switch (str[0]) {
+                    '+' => try parseAfterSign(str[1..], add),
+                    '-' => try parseAfterSign(str[1..], sub),
+                    else => return parseAfterSign(str, add),
+                };
+                if (res.value == .ok)
+                    res.index += 1;
+                return res;
             }
-
             return parseAfterSign(str, add);
         }
 
@@ -825,13 +906,13 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
             add_sub: *const fn (Int, Int) Overflow!Int,
         ) Error!Res {
             if (str.len == 0)
-                return error.ParserFailed;
+                return Res.err(0);
 
             const max_digits = @min(str.len, options.max_digits);
-            const first = fmt.charToDigit(str[0], options.base) catch return error.ParserFailed;
-            const first_casted = math.cast(Int, first) orelse return error.ParserFailed;
+            const first = fmt.charToDigit(str[0], options.base) catch return Res.err(0);
+            const first_casted = math.cast(Int, first) orelse return Res.err(0);
 
-            var res = add_sub(0, first_casted) catch return error.ParserFailed;
+            var res = add_sub(0, first_casted) catch return Res.err(0);
             const end = for (str[1..max_digits], 0..) |c, i| {
                 const d = fmt.charToDigit(c, options.base) catch break i;
                 const casted_b = math.cast(Int, options.base) orelse break i;
@@ -841,7 +922,7 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
                 res = add_sub(next, casted_d) catch break i;
             } else max_digits - 1;
 
-            return Res{ .value = res, .rest = str[end + 1 ..] };
+            return Res.ok(end + 1, res);
         }
 
         const Overflow = error{Overflow};
@@ -857,42 +938,42 @@ pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
 }
 
 test "int" {
-    const allocator = testing.failing_allocator;
-    const parser1 = int(u8, .{});
-    try expectResult(u8, .{ .value = 0 }, parser1.parse(allocator, "0"));
-    try expectResult(u8, .{ .value = 1 }, parser1.parse(allocator, "1"));
-    try expectResult(u8, .{ .value = 1, .rest = "a" }, parser1.parse(allocator, "1a"));
-    try expectResult(u8, .{ .value = 255 }, parser1.parse(allocator, "255"));
-    try expectResult(u8, .{ .value = 255, .rest = "5" }, parser1.parse(allocator, "2555"));
-    try expectResult(u8, .{ .value = 25, .rest = "6" }, parser1.parse(allocator, "256"));
-    try expectResult(u8, .{ .value = 255 }, parser1.parse(allocator, "+255"));
-    try expectResult(u8, error.ParserFailed, parser1.parse(allocator, "-255"));
+    const fa = testing.failing_allocator;
+    const p1 = int(u8, .{});
+    try expectOk(u8, 1, 0, try p1.parse(fa, "0"));
+    try expectOk(u8, 1, 1, try p1.parse(fa, "1"));
+    try expectOk(u8, 1, 1, try p1.parse(fa, "1a"));
+    try expectOk(u8, 3, 255, try p1.parse(fa, "255"));
+    try expectOk(u8, 3, 255, try p1.parse(fa, "2555"));
+    try expectOk(u8, 2, 25, try p1.parse(fa, "256"));
+    try expectOk(u8, 4, 255, try p1.parse(fa, "+255"));
+    try expectErr(u8, 0, try p1.parse(fa, "-255"));
 
-    const parser2 = int(u8, .{ .base = 16 });
-    try expectResult(u8, .{ .value = 0x00 }, parser2.parse(allocator, "0"));
-    try expectResult(u8, .{ .value = 0x01 }, parser2.parse(allocator, "1"));
-    try expectResult(u8, .{ .value = 0x1a }, parser2.parse(allocator, "1a"));
-    try expectResult(u8, .{ .value = 0x01, .rest = "g" }, parser2.parse(allocator, "1g"));
-    try expectResult(u8, .{ .value = 0xff }, parser2.parse(allocator, "ff"));
-    try expectResult(u8, .{ .value = 0xff }, parser2.parse(allocator, "FF"));
-    try expectResult(u8, .{ .value = 0xff }, parser2.parse(allocator, "00FF"));
-    try expectResult(u8, .{ .value = 0x10, .rest = "0" }, parser2.parse(allocator, "100"));
-    try expectResult(u8, .{ .value = 0xf, .rest = "g" }, parser2.parse(allocator, "fg"));
-    try expectResult(u8, .{ .value = 0xff }, parser2.parse(allocator, "+ff"));
-    try expectResult(u8, error.ParserFailed, parser2.parse(allocator, "-ff"));
+    const p2 = int(u8, .{ .base = 16 });
+    try expectOk(u8, 1, 0x00, try p2.parse(fa, "0"));
+    try expectOk(u8, 1, 0x01, try p2.parse(fa, "1"));
+    try expectOk(u8, 2, 0x1a, try p2.parse(fa, "1a"));
+    try expectOk(u8, 1, 0x01, try p2.parse(fa, "1g"));
+    try expectOk(u8, 2, 0xff, try p2.parse(fa, "ff"));
+    try expectOk(u8, 2, 0xff, try p2.parse(fa, "FF"));
+    try expectOk(u8, 4, 0xff, try p2.parse(fa, "00FF"));
+    try expectOk(u8, 2, 0x10, try p2.parse(fa, "100"));
+    try expectOk(u8, 1, 0x0f, try p2.parse(fa, "fg"));
+    try expectOk(u8, 3, 0xff, try p2.parse(fa, "+ff"));
+    try expectErr(u8, 0, try p2.parse(fa, "-ff"));
 
-    const parser3 = int(u8, .{ .base = 16, .max_digits = 2 });
-    try expectResult(u8, .{ .value = 0xff }, parser3.parse(allocator, "FF"));
-    try expectResult(u8, .{ .value = 0x00, .rest = "FF" }, parser3.parse(allocator, "00FF"));
+    const p3 = int(u8, .{ .base = 16, .max_digits = 2 });
+    try expectOk(u8, 2, 0xff, try p3.parse(fa, "FF"));
+    try expectOk(u8, 2, 0x00, try p3.parse(fa, "00FF"));
 
-    const parser4 = int(isize, .{});
-    try expectResult(isize, .{ .value = 255 }, parser4.parse(allocator, "+255"));
-    try expectResult(isize, .{ .value = -255 }, parser4.parse(allocator, "-255"));
+    const p4 = int(isize, .{});
+    try expectOk(isize, 4, 255, try p4.parse(fa, "+255"));
+    try expectOk(isize, 4, -255, try p4.parse(fa, "-255"));
 
-    const parser5 = int(isize, .{ .parse_sign = false });
-    try expectResult(isize, .{ .value = 255 }, parser5.parse(allocator, "255"));
-    try expectResult(isize, error.ParserFailed, parser5.parse(allocator, "+255"));
-    try expectResult(isize, error.ParserFailed, parser5.parse(allocator, "-255"));
+    const p5 = int(isize, .{ .parse_sign = false });
+    try expectOk(isize, 3, 255, try p5.parse(fa, "255"));
+    try expectErr(isize, 0, try p5.parse(fa, "+255"));
+    try expectErr(isize, 0, try p5.parse(fa, "-255"));
 }
 
 /// Construct a parser that succeeds if it parses any tag from `Enum` as
@@ -902,17 +983,14 @@ test "int" {
 pub fn enumeration(comptime Enum: type) Parser(Enum) {
     const Res = Result(Enum);
     return .{ .parse = struct {
-        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            var res: Error!Res = error.ParserFailed;
+        fn parse(_: mem.Allocator, str: []const u8) Error!Res {
+            var res: Res = Res.err(0);
             inline for (@typeInfo(Enum).@"enum".fields) |field| next: {
-                const p = comptime string(field.name);
-                const new = p.parse(allocator, str) catch |err| switch (err) {
-                    error.ParserFailed => break :next,
-                    else => |e| return e,
-                };
-                const old = res catch Res{ .value = undefined, .rest = str };
-                if (new.rest.len < old.rest.len)
-                    res = Res{ .value = @field(Enum, field.name), .rest = new.rest };
+                if (!std.mem.startsWith(u8, str, field.name))
+                    break :next;
+
+                if (res.index < field.name.len)
+                    res = Res.ok(field.name.len, @field(Enum, field.name));
             }
 
             return res;
@@ -921,22 +999,22 @@ pub fn enumeration(comptime Enum: type) Parser(Enum) {
 }
 
 test "enumeration" {
-    const allocator = testing.failing_allocator;
+    const fa = testing.failing_allocator;
     const E1 = enum { a, b, aa };
-    const parser1 = enumeration(E1);
-    try expectResult(E1, .{ .value = .a }, parser1.parse(allocator, "a"));
-    try expectResult(E1, .{ .value = .aa }, parser1.parse(allocator, "aa"));
-    try expectResult(E1, .{ .value = .b }, parser1.parse(allocator, "b"));
-    try expectResult(E1, .{ .value = .a, .rest = "b" }, parser1.parse(allocator, "ab"));
-    try expectResult(E1, .{ .value = .b, .rest = "b" }, parser1.parse(allocator, "bb"));
-    try expectResult(E1, error.ParserFailed, parser1.parse(allocator, "256"));
+    const p1 = enumeration(E1);
+    try expectOk(E1, 1, .a, try p1.parse(fa, "a"));
+    try expectOk(E1, 2, .aa, try p1.parse(fa, "aa"));
+    try expectOk(E1, 1, .b, try p1.parse(fa, "b"));
+    try expectOk(E1, 1, .a, try p1.parse(fa, "ab"));
+    try expectOk(E1, 1, .b, try p1.parse(fa, "bb"));
+    try expectErr(E1, 0, try p1.parse(fa, "256"));
 }
 
 /// Creates a parser that calls a function to obtain its underlying parser.
 /// This function introduces the indirection required for recursive grammars.
 /// ```
 /// const digit_10 = discard(digit(10));
-/// const digits = oneOf(.{ combine(.{ digit_10, ref(digitsRef) }), digit_10 });
+/// const digits = oneOf(.{ combine(.{ digit_10, ref(digitsRef) }), digit_10 } });
 /// fn digitsRef() Parser(void) {
 ///     return digits;
 /// };
@@ -951,7 +1029,7 @@ pub fn ref(comptime func: anytype) ReturnType(@TypeOf(func)) {
 }
 
 test "ref" {
-    const allocator = testing.failing_allocator;
+    const fa = testing.failing_allocator;
     const Scope = struct {
         const digit = ascii.digit(10).discard();
         const digits = oneOf(.{
@@ -962,27 +1040,60 @@ test "ref" {
             return digits;
         }
     };
-    try expectResult(void, .{ .value = {} }, Scope.digits.parse(allocator, "0"));
+
+    try expectOk(void, 1, {}, try Scope.digit.parse(fa, "0"));
 }
 
-pub fn expectResult(
-    comptime T: type,
-    m_expect: Error!Result(T),
-    m_actual: Error!Result(T),
-) !void {
-    const expect = m_expect catch |err| {
-        try testing.expectError(err, m_actual);
-        return;
-    };
+test "pos on fail" {
+    const fa = testing.failing_allocator;
+    const p1 = comptime combine(.{
+        ascii.char('[').discard(),
+        combine(.{
+            int(u8, .{}),
+            combine(.{
+                ascii.char(',').discard(),
+                int(u8, .{}),
+            }).many(.{ .collect = false }),
+        }).opt(),
+        ascii.char(']').discard(),
+    }).discard();
+    try expectOk(void, 2, {}, try p1.parse(fa, "[]"));
+    try expectOk(void, 3, {}, try p1.parse(fa, "[1]"));
+    try expectOk(void, 5, {}, try p1.parse(fa, "[1,2]"));
+    try expectErr(void, 4, try p1.parse(fa, "[1,2"));
+}
 
-    const actual = try m_actual;
-
-    try testing.expectEqualStrings(expect.rest, actual.rest);
-    switch (T) {
-        []const u8 => try testing.expectEqualStrings(expect.value, actual.value),
-        else => switch (@typeInfo(T)) {
-            .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expect.value, actual.value),
-            else => try testing.expectEqual(expect.value, actual.value),
+pub fn expectResult(comptime T: type, expected: Result(T), actual: Result(T)) !void {
+    switch (expected.value) {
+        .ok => |expected_value| switch (actual.value) {
+            .ok => |actual_value| {
+                switch (T) {
+                    []const u8 => try testing.expectEqualStrings(expected_value, actual_value),
+                    else => switch (@typeInfo(T)) {
+                        .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expected_value, actual_value),
+                        else => try testing.expectEqual(expected_value, actual_value),
+                    },
+                }
+            },
+            .err => try std.testing.expect(false),
+        },
+        .err => switch (actual.value) {
+            .ok => try std.testing.expect(false),
+            .err => {},
         },
     }
+    try testing.expectEqual(expected.index, actual.index);
+}
+
+pub fn expectErr(comptime T: type, expected: usize, actual: Result(T)) !void {
+    return try expectResult(T, Result(T).err(expected), actual);
+}
+
+pub fn expectOk(
+    comptime T: type,
+    expected_index: usize,
+    expected_value: T,
+    actual: Result(T),
+) !void {
+    return try expectResult(T, Result(T).ok(expected_index, expected_value), actual);
 }

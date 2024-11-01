@@ -31,22 +31,22 @@ const rgb = mecha.combine(.{
 test "rgb" {
     const testing = std.testing;
     const allocator = testing.allocator;
-    const a = (try rgb.parse(allocator, "#aabbcc")).value;
+    const a = (try rgb.parse(allocator, "#aabbcc")).value.ok;
     try testing.expectEqual(@as(u8, 0xaa), a.r);
     try testing.expectEqual(@as(u8, 0xbb), a.g);
     try testing.expectEqual(@as(u8, 0xcc), a.b);
 
-    const b = (try rgb.parse(allocator, "#abc")).value;
+    const b = (try rgb.parse(allocator, "#abc")).value.ok;
     try testing.expectEqual(@as(u8, 0xaa), b.r);
     try testing.expectEqual(@as(u8, 0xbb), b.g);
     try testing.expectEqual(@as(u8, 0xcc), b.b);
 
-    const c = (try rgb.parse(allocator, "#000000")).value;
+    const c = (try rgb.parse(allocator, "#000000")).value.ok;
     try testing.expectEqual(@as(u8, 0), c.r);
     try testing.expectEqual(@as(u8, 0), c.g);
     try testing.expectEqual(@as(u8, 0), c.b);
 
-    const d = (try rgb.parse(allocator, "#000")).value;
+    const d = (try rgb.parse(allocator, "#000")).value.ok;
     try testing.expectEqual(@as(u8, 0), d.r);
     try testing.expectEqual(@as(u8, 0), d.g);
     try testing.expectEqual(@as(u8, 0), d.b);

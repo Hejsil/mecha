@@ -30,6 +30,24 @@ pub fn Parser(comptime _T: type) type {
         pub const mapConst = mecha.mapConst;
         pub const map = mecha.map;
         pub const opt = mecha.opt;
+
+        const Self = @This();
+
+        fn report(allocator: mem.Allocator, str: []const u8) Error!Result(T) {
+            var ctx = mecha.Context{};
+            Self.parse(allocator, &ctx, str) catch |e| {
+                if (e == error.ParserFailed) {
+                    std.debug.print("Parser {s} ({s}:{d}:{d}) failed at position {d}", .{
+                        ctx.loc.fn_name,
+                        ctx.loc.file,
+                        ctx.loc.line,
+                        ctx.loc.column,
+                        ctx.pos,
+                    });
+                    return e;
+                }
+            };
+        }
     };
 }
 

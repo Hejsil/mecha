@@ -81,7 +81,7 @@ pub fn Result(comptime T: type) type {
         ok: Pass,
         err: Fail,
 
-        const Pass = struct {
+        const Ok = struct {
             pub const Value = T;
 
             value: T,
@@ -89,7 +89,7 @@ pub fn Result(comptime T: type) type {
             span: Span = span(0, 0),
         };
 
-        const Fail = struct {
+        const Error = struct {
             loc: builtin.SourceLocation,
             pos: usize,
         };

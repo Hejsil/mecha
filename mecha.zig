@@ -33,13 +33,17 @@ pub fn Parser(comptime _T: type) type {
     };
 }
 
-/// The result of a parse where `ok` corresponds to a successful parse
+/// The result of a parse. where `ok` corresponds to a successful parse
 /// and `err` denotes a failure. The result will be placed in `value`
 /// and `rest` will contain the unparsed input. On error, `pos` will contain
 /// the position where the parser stopped and the next parser can pick up.
 pub fn Result(comptime T: type) type {
     return struct {
+        /// An index into the input string pointing to the end of what was parsed.
         index: usize,
+
+        /// The value parsed. Can either be `ok`, meaning parsing was successful, or `err` meaning
+        /// the string could not be parsed.
         value: union(enum) {
             ok: T,
             err,
@@ -463,9 +467,9 @@ test "combine" {
 
 /// Takes a tuple of `Parser(T)` and constructs a parser that
 /// succeeds when at least one of the child parsers succeeds.
-/// Note that /// parsers will be called in order, with `str`
+/// Note that parsers will be called in order, with `str`
 /// as input. The parser will return with the type of the first
-// child parser and the result of the first child parser
+/// child parser and the result of the first child parser
 /// that succeeds. The parser result will be `Result(T)`.
 pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))) {
     inline for (parsers) |parser|

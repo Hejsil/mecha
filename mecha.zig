@@ -1075,7 +1075,7 @@ pub fn expectResult(comptime T: type, expected: Result(T), actual: Result(T)) !v
                     []const u8 => try testing.expectEqualStrings(expected_value, actual_value),
                     else => switch (@typeInfo(T)) {
                         .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expected_value, actual_value),
-                        else => try testing.expectEqual(expected_value, actual_value),
+                        else => try testing.expectEqualDeep(expected_value, actual_value),
                     },
                 }
             },

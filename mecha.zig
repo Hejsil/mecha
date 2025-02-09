@@ -30,6 +30,7 @@ pub fn Parser(comptime _T: type) type {
         pub const mapConst = mecha.mapConst;
         pub const map = mecha.map;
         pub const opt = mecha.opt;
+        pub const peek = mecha.peek;
     };
 }
 
@@ -359,6 +360,27 @@ test "opt" {
     try expectOk(?u8, 1, 'a', try p1.parse(fa, "a"));
     try expectOk(?u8, 1, 'a', try p1.parse(fa, "aa"));
     try expectOk(?u8, 0, null, try p1.parse(fa, "1"));
+}
+
+pub fn peek(comptime parser: anytype) mecha.Parser(void) {
+    const Res = mecha.Result(void);
+    return .{ .parse = struct {
+        fn parse(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
+            const res = try parser.parse(allocator, str);
+            return switch (res.value) {
+                .ok => Res.ok(0, {}),
+                .err => Res.err(0),
+            };
+        }
+    }.parse };
+}
+
+test "peek" {
+    const fa = testing.failing_allocator;
+    const p1 = comptime ascii.range('a', 'z').peek();
+    try expectOk(void, 0, {}, try p1.parse(fa, "a"));
+    try expectOk(void, 0, {}, try p1.parse(fa, "aa"));
+    try expectErr(void, 0, try p1.parse(fa, "1"));
 }
 
 fn parsersTypes(comptime parsers: anytype) []const type {

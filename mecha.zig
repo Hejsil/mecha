@@ -31,6 +31,7 @@ pub fn Parser(comptime _T: type) type {
         pub const map = mecha.map;
         pub const opt = mecha.opt;
         pub const peek = mecha.peek;
+        pub const not = mecha.not;
     };
 }
 
@@ -362,14 +363,22 @@ test "opt" {
     try expectOk(?u8, 0, null, try p1.parse(fa, "1"));
 }
 
-pub fn peek(comptime parser: anytype) mecha.Parser(void) {
+pub fn not(comptime parser: anytype) Parser(void) {
+    return _peek(parser, true);
+}
+
+pub fn peek(comptime parser: anytype) Parser(void) {
+    return _peek(parser, false);
+}
+
+pub fn _peek(comptime parser: anytype, _not: bool) mecha.Parser(void) {
     const Res = mecha.Result(void);
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) mecha.Error!Res {
             const res = try parser.parse(allocator, str);
             return switch (res.value) {
-                .ok => Res.ok(0, {}),
-                .err => Res.err(0),
+                .ok => if (_not) Res.err(0) else Res.ok(0, {}),
+                .err => if (_not) Res.ok(0, {}) else Res.err(0),
             };
         }
     }.parse };

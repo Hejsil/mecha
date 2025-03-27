@@ -33,10 +33,9 @@ pub fn Parser(comptime _T: type) type {
     };
 }
 
-/// The result of a parse. where `ok` corresponds to a successful parse
-/// and `err` denotes a failure. The result will be placed in `value`
-/// and `rest` will contain the unparsed input. On error, `pos` will contain
-/// the position where the parser stopped and the next parser can pick up.
+/// The result of a parse. where `ok` corresponds to a successful parse and `err` denotes a
+/// failure. The result will be placed in `value` and `index` will indicate how much of the input
+/// was parsed.
 pub fn Result(comptime T: type) type {
     return struct {
         /// An index into the input string pointing to the end of what was parsed.
@@ -90,8 +89,8 @@ fn ParserResult(comptime P: type) type {
     };
 }
 
-/// A parser that always succeeds and parses nothing. This parser
-/// is only really useful for generic code. See `many`.
+/// A parser that always succeeds and parses nothing. This parser is only really useful for
+/// generic code. See `many`.
 pub const noop = Parser(void){ .parse = struct {
     const Res = Result(void);
     fn parse(_: mem.Allocator, _: []const u8) Error!Res {
@@ -116,8 +115,8 @@ test "eos" {
     try expectErr(void, 0, try eos.parse(fa, "a"));
 }
 
-/// A parser that always succeeds with the result being the
-/// entire string. The same as the '.*$' regex.
+/// A parser that always succeeds with the result being the entire string. The same as the '.*$'
+/// regex.
 pub const rest = Parser([]const u8){ .parse = struct {
     const Res = Result([]const u8);
     fn parse(_: mem.Allocator, str: []const u8) Error!Res {
@@ -131,8 +130,7 @@ test "rest" {
     try expectOk([]const u8, 1, "a", try rest.parse(fa, "a"));
 }
 
-/// Construct a parser that succeeds if the string passed in starts
-/// with `str`.
+/// Construct a parser that succeeds if the string passed in starts with `str`.
 pub fn string(comptime str: []const u8) Parser([]const u8) {
     const Res = Result([]const u8);
     return .{ .parse = struct {
@@ -154,13 +152,13 @@ test "string" {
 }
 
 pub const ManyNOptions = struct {
-    /// A parser used to parse the content between each element `manyN` parses.
-    /// The default is `noop`, so each element will be parsed one after another.
+    /// A parser used to parse the content between each element `manyN` parses. The default is
+    /// `noop`, so each element will be parsed one after another.
     separator: Parser(void) = noop,
 };
 
-/// Construct a parser that repeatedly uses `parser` until `n` iterations is reached.
-/// The parser's result will be an array of the results from the repeated parser.
+/// Construct a parser that repeatedly uses `parser` until `n` iterations is reached. The parser's
+/// result will be an array of the results from the repeated parser.
 pub fn manyN(
     comptime parser: anytype,
     comptime n: usize,
@@ -209,22 +207,20 @@ test "manyN" {
 }
 
 pub const ManyOptions = struct {
-    /// The min number of elements `many` should parse for parsing to be
-    /// considered successful.
+    /// The min number of elements `many` should parse for parsing to be considered successful.
     min: usize = 0,
 
-    /// The maximum number of elements `many` will parse. `many` will stop
-    /// parsing after reaching this number of elements even if more elements
-    /// could be parsed.
+    /// The maximum number of elements `many` will parse. `many` will stop parsing after reaching
+    /// this number of elements even if more elements could be parsed.
     max: usize = math.maxInt(usize),
 
-    /// Have `many` collect the results of all elements in an allocated slice.
-    /// Setting this to false, and `many` will instead just return the parsed
-    /// string as the result without any allocation.
+    /// Have `many` collect the results of all elements in an allocated slice. Setting this to
+    /// false, and `many` will instead just return the parsed string as the result without any
+    /// allocation.
     collect: bool = true,
 
-    /// A parser used to parse the content between each element `many` parses.
-    /// The default is `noop`, so each element will be parsed one after another.
+    /// A parser used to parse the content between each element `many` parses. The default is
+    /// `noop`, so each element will be parsed one after another.
     separator: Parser(void) = noop,
 };
 
@@ -234,9 +230,8 @@ fn Many(comptime parser: anytype, comptime options: ManyOptions) type {
     return []const u8;
 }
 
-/// Construct a parser that repeatedly uses `parser` as long as it succeeds
-/// or until `opt.max` is reach. See `ManyOptions` for options this function
-/// exposes.
+/// Construct a parser that repeatedly uses `parser` as long as it succeeds or until `opt.max` is
+/// reach. See `ManyOptions` for options this function exposes.
 pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many(parser, options)) {
     const ElementParser = @TypeOf(parser);
     const Element = ParserResult(ElementParser);
@@ -337,9 +332,8 @@ test "many" {
     try expectOk([]u21, 6, &expect, res);
 }
 
-/// Construct a parser that will call `parser` on the string
-/// but never fails to parse. The parser's result will be the
-/// result of `parser` on success and `null` on failure.
+/// Construct a parser that will call `parser` on the string but never fails to parse. The parser's
+///  result will be the result of `parser` on success and `null` on failure.
 pub fn opt(comptime parser: anytype) Parser(?ParserResult(@TypeOf(parser))) {
     const Res = Result(?ParserResult(@TypeOf(parser)));
     return .{ .parse = struct {
@@ -386,13 +380,11 @@ fn Tuple(comptime n: usize, comptime types: [n]type) type {
     return meta.Tuple(&types);
 }
 
-/// Takes a tuple of `Parser(any)` and constructs a parser that
-/// only succeeds if all parsers succeed to parse. The parsers
-/// will be called in order and parser `N` will use the `rest`
-/// from parser `N-1`. The parse result will be a `Tuple` of
-/// all parsers not of type `Parser(void)`. If only one parser
-/// is not of type `Parser(void)` then this parser's result is
-/// returned instead of a tuple.
+/// Takes a tuple of `Parser(any)` and constructs a parser that only succeeds if all parsers
+/// succeed to parse. The parsers will be called in order and parser `N` will use the `rest` from
+/// parser `N-1`. The parse result will be a `Tuple` of all parsers not of type `Parser(void)`. If
+/// only one parser is not of type `Parser(void)` then this parser's result is returned instead of
+/// a tuple.
 pub fn combine(comptime parsers: anytype) Parser(Combine(parsers)) {
     const types = parsersTypes(parsers);
     const Value = Combine(parsers);
@@ -465,12 +457,10 @@ test "combine" {
     try expectOk([]const u8, 6, "10 10 ", try p5.parse(fa, "10 10 "));
 }
 
-/// Takes a tuple of `Parser(T)` and constructs a parser that
-/// succeeds when at least one of the child parsers succeeds.
-/// Note that parsers will be called in order, with `str`
-/// as input. The parser will return with the type of the first
-/// child parser and the result of the first child parser
-/// that succeeds. The parser result will be `Result(T)`.
+/// Takes a tuple of `Parser(T)` and constructs a parser that succeeds when at least one of the
+/// child parsers succeeds. Note that parsers will be called in order, with `str` as input. The
+/// parser will return with the type of the first child parser and the result of the first child
+/// parser that succeeds. The parser result will be `Result(T)`.
 pub fn oneOf(comptime parsers: anytype) Parser(ParserResult(@TypeOf(parsers[0]))) {
     inline for (parsers) |parser|
         typecheckParser(@TypeOf(parser));
@@ -507,9 +497,8 @@ test "oneOf" {
     try expectErr(u8, 0, try p1.parse(fa, "q"));
 }
 
-/// Takes any parser (preferable not of type `Parser([]const u8)`)
-/// and converts it to a parser where the result is a string that
-/// contains all characters parsed by `parser`.
+/// Takes any parser and converts it to a parser where the result is a string that contains all
+/// characters parsed by the parser.
 pub fn asStr(comptime parser: anytype) Parser([]const u8) {
     const Res = Result([]const u8);
     typecheckParser(@TypeOf(parser));
@@ -551,10 +540,9 @@ fn ReturnTypeErrorPayload(comptime P: type) type {
 
 pub const ConvertError = error{ConversionFailed} || Error;
 
-/// Constructs a parser that has its result converted with the
-/// `conv` function. The ´conv` functions signature is
-/// `*const fn (mem.Allocator, ParserResult(parser)) ConvertError!T`.
-/// The parser constructed will fail if `conv` fails.
+/// Constructs a parser that has its result converted with the `conv` function. The ´conv`
+/// functions signature is `*const fn (mem.Allocator, ParserResult(parser)) ConvertError!T`. The
+/// parser constructed will fail if `conv` fails.
 pub fn convert(
     comptime parser: anytype,
     comptime conv: anytype,
@@ -577,8 +565,8 @@ pub fn convert(
     }.parse };
 }
 
-/// Constructs a convert function for `convert` that takes a
-/// string and parses it to an int of type `Int`.
+/// Constructs a convert function for `convert` that takes a string and parses it to an int of
+/// type `Int`.
 pub fn toInt(
     comptime Int: type,
     comptime base: u8,
@@ -590,8 +578,8 @@ pub fn toInt(
     }.func;
 }
 
-/// Constructs a convert function for `convert` that takes a
-/// string and parses it to a float of type `Float`.
+/// Constructs a convert function for `convert` that takes a string and parses it to a float of
+/// type `Float`.
 pub fn toFloat(comptime Float: type) *const fn (mem.Allocator, []const u8) ConvertError!Float {
     return struct {
         fn func(_: mem.Allocator, str: []const u8) ConvertError!Float {
@@ -600,8 +588,7 @@ pub fn toFloat(comptime Float: type) *const fn (mem.Allocator, []const u8) Conve
     }.func;
 }
 
-/// A convert function for `convert` that takes a string and
-/// returns the first codepoint.
+/// A convert function for `convert` that takes a string and returns the first codepoint.
 pub fn toChar(_: mem.Allocator, str: []const u8) ConvertError!u21 {
     if (str.len == 0)
         return error.ConversionFailed;
@@ -613,8 +600,8 @@ pub fn toChar(_: mem.Allocator, str: []const u8) ConvertError!u21 {
     return unicode.utf8Decode(str[0..cp_len]) catch return error.ConversionFailed;
 }
 
-/// Constructs a convert function for `convert` that takes a
-/// string and converts it to an `Enum` with `std.meta.stringToEnum`.
+/// Constructs a convert function for `convert` that takes a string and converts it to an `Enum`
+/// with `std.meta.stringToEnum`.
 pub fn toEnum(comptime Enum: type) *const fn (mem.Allocator, []const u8) ConvertError!Enum {
     return struct {
         fn func(_: mem.Allocator, str: []const u8) ConvertError!Enum {
@@ -623,9 +610,8 @@ pub fn toEnum(comptime Enum: type) *const fn (mem.Allocator, []const u8) Convert
     }.func;
 }
 
-/// A convert function for `convert` that takes a string
-/// and returns `true` if it is `"true"` and `false` if it
-/// is `"false"`.
+/// A convert function for `convert` that takes a string and returns `true` if it is `"true"` and
+/// `false` if it is `"false"`.
 pub fn toBool(allocator: mem.Allocator, str: []const u8) ConvertError!bool {
     const r = try toEnum(enum { false, true })(allocator, str);
     return r == .true;
@@ -672,10 +658,9 @@ test "convert" {
     try expectOk(u21, 2, 0x100, try p6.parse(fa, "Āā"));
 }
 
-/// Constructs a parser that has its result converted with the
-/// `conv` function. The ´conv` functions signature is
-/// `*const fn (ParserResult(parser)) T`, so this function should only
-/// be used for conversions that cannot fail. See `convert`.
+/// Constructs a parser that has its result converted with the `conv` function. The ´conv`
+/// functions signature is `*const fn (ParserResult(parser)) T`, so this function should only be
+/// used for conversions that cannot fail. See `convert`.
 pub fn map(
     comptime parser: anytype,
     comptime conv: anytype,
@@ -696,11 +681,9 @@ pub fn map(
     };
 }
 
-/// Constructs a parser that consumes the input with `parser`
-/// and places `value` into it's result. Discarding `parser`
-/// result value, but keeping it's rest. This can be used
-/// to map parsers to static values, for example `\n` to
-/// the newline character.
+/// Constructs a parser that consumes the input with `parser` and places `value` into it's result.
+/// Discarding `parser` result value, but keeping it's rest. This can be used to map parsers to
+/// static values, for example `\n` to the newline character.
 pub fn mapConst(
     comptime parser: anytype,
     comptime value: anytype,
@@ -734,12 +717,11 @@ fn ToStructResult(comptime T: type) type {
     }.func);
 }
 
-/// Constructs a convert function for `map` that takes a tuple, array or
-// single value and converts it into the struct `T`. Fields will be assigned
-// in order, so `tuple[i]` will be assigned to the ith field of `T`.
-// This function will give a compile error if `T` and the tuple does not have
-// the same number of fields, or if the items of the tuple cannot be coerced into
-/// the fields of the struct.
+/// Constructs a convert function for `map` that takes a tuple, array or single value and converts
+/// it into the struct `T`. Fields will be assigned in order, so `tuple[i]` will be assigned to
+/// the ith field of `T`. This function will give a compile error if `T` and the tuple does not
+/// have the same number of fields, or if the items of the tuple cannot be coerced into the fields
+/// of the struct.
 pub fn toStruct(comptime T: type) ToStructResult(T) {
     return struct {
         fn func(value: anytype) T {
@@ -764,8 +746,8 @@ pub fn toStruct(comptime T: type) ToStructResult(T) {
     }.func;
 }
 
-/// Constructs a conversion function for `map` that initializes a union `T`
-/// with the value passed to it using `@unionInit` with the tag `tag`.
+/// Constructs a conversion function for `map` that initializes a union `T` with the value passed
+/// to it using `@unionInit` with the tag `tag`.
 pub fn unionInit(comptime T: type, comptime tag: @typeInfo(T).@"union".tag_type.?) ToStructResult(T) {
     return struct {
         fn func(x: anytype) T {
@@ -833,8 +815,7 @@ test "map" {
     try testing.expectEqualStrings("foo", wr.value.ok.value);
 }
 
-/// Constructs a parser that discards the result returned from the parser
-/// it wraps.
+/// Constructs a parser that discards the result returned from the parser it wraps.
 pub fn discard(comptime parser: anytype) Parser(void) {
     return parser.map(struct {
         fn d(_: anytype) void {}
@@ -864,10 +845,9 @@ pub const IntOptions = struct {
     max_digits: usize = math.maxInt(usize),
 };
 
-/// Construct a parser that succeeds if it parser an integer of
-/// `base`. This parser will stop parsing digits after `max_digits`
-/// after the leading zeros haven been reached. The result of this
-/// parser will be the string containing the match.
+/// Construct a parser that succeeds if it parser an integer of `base`. This parser will stop
+/// parsing digits after `max_digits` after the leading zeros haven been reached. The result of
+/// this parser will be the string containing the match.
 pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
     debug.assert(options.max_digits != 0);
     const sign_parser = if (options.parse_sign)
@@ -884,9 +864,8 @@ pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
     }).asStr();
 }
 
-/// Same as `intToken` but also converts the parsed string to an
-/// integer. This parser will at most parse the same number of digits
-/// as the underlying integer can hold in the specified base.
+/// Same as `intToken` but also converts the parsed string to an integer. This parser will at most
+/// parse the same number of digits as the underlying integer can hold in the specified base.
 pub fn int(comptime Int: type, comptime options: IntOptions) Parser(Int) {
     debug.assert(options.max_digits != 0);
     const Res = Result(Int);
@@ -980,10 +959,9 @@ test "int" {
     try expectErr(isize, 0, try p5.parse(fa, "-255"));
 }
 
-/// Construct a parser that succeeds if it parses any tag from `Enum` as
-/// a string. The longest match is always chosen, so for `enum{a,aa}` the
-/// "aa" string will succeed parsing and have the result of `.aa` and not
-/// `.a`.
+/// Construct a parser that succeeds if it parses any tag from `Enum` as a string. The longest
+/// match is always chosen, so for `enum{a,aa}` the "aa" string will succeed parsing and have the
+/// result of `.aa` and not `.a`.
 pub fn enumeration(comptime Enum: type) Parser(Enum) {
     const Res = Result(Enum);
     return .{ .parse = struct {
@@ -1014,8 +992,8 @@ test "enumeration" {
     try expectErr(E1, 0, try p1.parse(fa, "256"));
 }
 
-/// Creates a parser that calls a function to obtain its underlying parser.
-/// This function introduces the indirection required for recursive grammars.
+/// Creates a parser that calls a function to obtain its underlying parser. This function
+/// introduces the indirection required for recursive grammars.
 /// ```
 /// const digit_10 = discard(digit(10));
 /// const digits = oneOf(.{ combine(.{ digit_10, ref(digitsRef) }), digit_10 } });
@@ -1070,14 +1048,12 @@ test "pos on fail" {
 pub fn expectResult(comptime T: type, expected: Result(T), actual: Result(T)) !void {
     switch (expected.value) {
         .ok => |expected_value| switch (actual.value) {
-            .ok => |actual_value| {
-                switch (T) {
-                    []const u8 => try testing.expectEqualStrings(expected_value, actual_value),
-                    else => switch (@typeInfo(T)) {
-                        .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expected_value, actual_value),
-                        else => try testing.expectEqualDeep(expected_value, actual_value),
-                    },
-                }
+            .ok => |actual_value| switch (T) {
+                []const u8 => try testing.expectEqualStrings(expected_value, actual_value),
+                else => switch (@typeInfo(T)) {
+                    .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expected_value, actual_value),
+                    else => try testing.expectEqualDeep(expected_value, actual_value),
+                },
             },
             .err => try std.testing.expect(false),
         },

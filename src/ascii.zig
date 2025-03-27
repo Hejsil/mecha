@@ -6,10 +6,9 @@ const math = std.math;
 const mem = std.mem;
 const testing = std.testing;
 
-/// Constructs a parser that parses a single ascii bytes based on
-/// a `predicate`. If the `predicate` returns true, the parser will
-/// return the byte parsed and the rest of the string. Otherwise
-/// the parser will fail.
+/// Constructs a parser that parses a single ascii bytes based on a `predicate`. If the `predicate`
+/// returns true, the parser will return the byte parsed and the rest of the string. Otherwise the
+/// parser will fail.
 pub fn wrap(comptime predicate: *const fn (u8) bool) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
     return .{ .parse = struct {
@@ -54,15 +53,14 @@ pub fn rangePred(comptime start: u8, comptime end: u8) *const fn (u8) bool {
     }.pred;
 }
 
-/// Constructs a parser that only succeeds if the string starts with
-/// a codepoint that is in between `start` and `end` inclusively.
-/// The parser's result will be the codepoint parsed.
+/// Constructs a parser that only succeeds if the string starts with a codepoint that is in between
+/// `start` and `end` inclusively. The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u8, comptime end: u8) mecha.Parser(u8) {
     return wrap(rangePred(start, end));
 }
 
-/// Creates a parser that succeeds and parses one ascii character if
-/// `parser` fails to parse the input string.
+/// Creates a parser that succeeds and parses one ascii character if `parser` fails to parse the
+/// input string.
 pub fn not(comptime parser: anytype) mecha.Parser(u8) {
     const Res = mecha.Result(u8);
     return .{ .parse = struct {
@@ -88,9 +86,8 @@ test "not" {
     }.pred);
 }
 
-/// Construct a parser that succeeds if the string starts with a
-/// character that is a digit in `base`. The parser's result will be
-/// the character parsed.
+/// Construct a parser that succeeds if the string starts with a character that is a digit in
+/// `base`. The parser's result will be the character parsed.
 pub fn digit(comptime base: u8) mecha.Parser(u8) {
     debug.assert(base != 0);
     if (base <= 10)

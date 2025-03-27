@@ -6,10 +6,9 @@ const mem = std.mem;
 const testing = std.testing;
 const unicode = std.unicode;
 
-/// Constructs a parser that parses a single utf8 codepoint based on
-/// a `predicate`. If the `predicate` returns true, the parser will
-/// return the codepoint parsed and the rest of the string. Otherwise
-/// the parser will fail.
+/// Constructs a parser that parses a single utf8 codepoint based on a `predicate`. If the
+/// `predicate` returns true, the parser will return the codepoint parsed and the rest of the
+/// string. Otherwise the parser will fail.
 pub fn wrap(comptime predicate: *const fn (u21) bool) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
     return .{ .parse = struct {
@@ -55,9 +54,8 @@ test "char" {
     try mecha.expectErr(u21, 0, try p2.parse(fa, "\xc0"));
 }
 
-/// Constructs a parser that only succeeds if the string starts with
-/// a codepoint that is in between `start` and `end` inclusively.
-/// The parser's result will be the codepoint parsed.
+/// Constructs a parser that only succeeds if the string starts with a codepoint that is in between
+/// `start` and `end` inclusively. The parser's result will be the codepoint parsed.
 pub fn range(comptime start: u21, comptime end: u21) mecha.Parser(u21) {
     return wrap(struct {
         fn pred(cp: u21) bool {
@@ -87,8 +85,8 @@ test "range" {
     try mecha.expectErr(u21, 0, try p2.parse(fa, "\xc0"));
 }
 
-/// Creates a parser that succeeds and parses one utf8 codepoint if
-/// `parser` fails to parse the input string.
+/// Creates a parser that succeeds and parses one utf8 codepoint if `parser` fails to parse the
+/// input string.
 pub fn not(comptime parser: anytype) mecha.Parser(u21) {
     const Res = mecha.Result(u21);
     return .{ .parse = struct {

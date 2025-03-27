@@ -57,6 +57,31 @@ test "rgb" {
     try testing.expectEqual(@as(u8, 0), d.g);
     try testing.expectEqual(@as(u8, 0), d.b);
 }
+```
 
+
+## Installation
+
+Developers tend to either use
+* The latest tagged release of Zig
+* The latest build of Zigs master branch
+
+Depending on which developer you are, you need to run different `zig fetch` commands:
+
+```sh
+# Version of mecha that works with a tagged release of Zig
+# Replace `<REPLACE ME>` with the version of mecha that you want to use
+# See: https://github.com/Hejsil/mecha/releases
+zig fetch --save https://github.com/Hejsil/mecha/archive/refs/tags/<REPLACE ME>.tar.gz
+
+# Version of mecha that works with latest build of Zigs master branch
+zig fetch --save git+https://github.com/Hejsil/mecha
+```
+
+Then add the following to `build.zig`:
+
+```zig
+const mecha = b.dependency("mecha", .{});
+exe.root_module.addImport("mecha", clap.module("mecha"));
 ```
 

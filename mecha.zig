@@ -1050,10 +1050,7 @@ pub fn expectResult(comptime T: type, expected: Result(T), actual: Result(T)) !v
         .ok => |expected_value| switch (actual.value) {
             .ok => |actual_value| switch (T) {
                 []const u8 => try testing.expectEqualStrings(expected_value, actual_value),
-                else => switch (@typeInfo(T)) {
-                    .pointer => |ptr| try testing.expectEqualSlices(ptr.child, expected_value, actual_value),
-                    else => try testing.expectEqualDeep(expected_value, actual_value),
-                },
+                else => try testing.expectEqualDeep(expected_value, actual_value),
             },
             .err => try std.testing.expect(false),
         },

@@ -5,7 +5,9 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const module = b.addModule("mecha", .{ .root_source_file = b.path("mecha.zig") });
+    const module = b.addModule("mecha", .{
+        .root_source_file = b.path("mecha.zig"),
+    });
 
     const test_step = b.step("test", "Run all tests in all modes.");
     for ([_][]const u8{

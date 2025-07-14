@@ -128,7 +128,7 @@ test "digit" {
 
 pub const alphabetic = wrap(std.ascii.isAlphabetic);
 pub const alphanumeric = wrap(std.ascii.isAlphanumeric);
-pub const ascii = wrap(std.ascii.isASCII);
+pub const ascii = wrap(std.ascii.isAscii);
 pub const control = wrap(std.ascii.isControl);
 pub const graph = wrap(std.ascii.isGraph);
 pub const lower = wrap(std.ascii.isLower);
@@ -143,7 +143,7 @@ test "predicate" {
     try testWithPredicate(lower, std.ascii.isLower);
     try testWithPredicate(print, std.ascii.isPrint);
     try testWithPredicate(upper, std.ascii.isUpper);
-    try testWithPredicate(ascii, std.ascii.isASCII);
+    try testWithPredicate(ascii, std.ascii.isAscii);
     try testWithPredicate(whitespace, std.ascii.isWhitespace);
 }
 

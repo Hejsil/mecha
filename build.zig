@@ -14,9 +14,11 @@ pub fn build(b: *std.Build) void {
         "example/json.zig",
     }) |test_file| {
         const tests = b.addTest(.{
-            .root_source_file = b.path(test_file),
-            .optimize = optimize,
-            .target = target,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(test_file),
+                .optimize = optimize,
+                .target = target,
+            }),
         });
         const run_tests = b.addRunArtifact(tests);
         tests.root_module.addImport("mecha", module);

@@ -241,9 +241,9 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
             var res = if (options.collect)
-                try std.ArrayList(Element).initCapacity(allocator, options.min)
+                try std.ArrayListUnmanaged(Element).initCapacity(allocator, options.min)
             else {};
-            errdefer if (options.collect) res.deinit();
+            errdefer if (options.collect) res.deinit(allocator);
 
             var index: usize = 0;
             var i: usize = 0;
@@ -265,7 +265,7 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
                 switch (r.value) {
                     .ok => |value| {
                         if (options.collect)
-                            try res.append(value);
+                            try res.append(allocator, value);
                     },
                     .err => break,
                 }
@@ -277,7 +277,7 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
                 return Res.err(index);
 
             const value = if (options.collect)
-                try res.toOwnedSlice()
+                try res.toOwnedSlice(allocator)
             else
                 str[0..index];
 

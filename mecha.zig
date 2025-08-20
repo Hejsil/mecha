@@ -850,8 +850,8 @@ pub const IntOptions = struct {
 /// this parser will be the string containing the match.
 pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
     debug.assert(options.max_digits != 0);
-    const sign_parser = if (options.parse_sign)
-        oneOf(.{ .ok = .{ ascii.char('-'), ascii.char('+'), noop } })
+    const sign_parser = comptime if (options.parse_sign)
+        oneOf(.{ ascii.char('-').asStr(), ascii.char('+').asStr(), noop.asStr() })
     else
         noop;
     return comptime combine(.{
@@ -862,6 +862,46 @@ pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
             .max = options.max_digits,
         }),
     }).asStr();
+}
+
+test "intToken" {
+    const fa = testing.failing_allocator;
+    const p1 = intToken(.{});
+    try expectOk([]const u8, 1, "0", try p1.parse(fa, "0"));
+    try expectOk([]const u8, 1, "1", try p1.parse(fa, "1"));
+    try expectOk([]const u8, 1, "1", try p1.parse(fa, "1a"));
+    try expectOk([]const u8, 3, "255", try p1.parse(fa, "255"));
+    try expectOk([]const u8, 4, "2555", try p1.parse(fa, "2555"));
+    try expectOk([]const u8, 3, "256", try p1.parse(fa, "256"));
+    try expectOk([]const u8, 4, "+255", try p1.parse(fa, "+255"));
+    try expectOk([]const u8, 4, "-255", try p1.parse(fa, "-255"));
+
+    const p2 = intToken(.{ .base = 16 });
+    try expectOk([]const u8, 1, "0", try p2.parse(fa, "0"));
+    try expectOk([]const u8, 1, "1", try p2.parse(fa, "1"));
+    try expectOk([]const u8, 2, "1a", try p2.parse(fa, "1a"));
+    try expectOk([]const u8, 1, "1", try p2.parse(fa, "1g"));
+    try expectOk([]const u8, 2, "ff", try p2.parse(fa, "ff"));
+    try expectOk([]const u8, 2, "FF", try p2.parse(fa, "FF"));
+    try expectOk([]const u8, 4, "00FF", try p2.parse(fa, "00FF"));
+    try expectOk([]const u8, 3, "100", try p2.parse(fa, "100"));
+    try expectOk([]const u8, 1, "f", try p2.parse(fa, "fg"));
+    try expectErr([]const u8, 0, try p2.parse(fa, "gf"));
+    try expectOk([]const u8, 3, "+ff", try p2.parse(fa, "+ff"));
+    try expectOk([]const u8, 3, "-ff", try p2.parse(fa, "-ff"));
+
+    const p3 = intToken(.{ .base = 16, .max_digits = 2 });
+    try expectOk([]const u8, 2, "FF", try p3.parse(fa, "FF"));
+    try expectOk([]const u8, 2, "00", try p3.parse(fa, "00FF"));
+
+    const p4 = intToken(.{});
+    try expectOk([]const u8, 4, "+255", try p4.parse(fa, "+255"));
+    try expectOk([]const u8, 4, "-255", try p4.parse(fa, "-255"));
+
+    const p5 = intToken(.{ .parse_sign = false });
+    try expectOk([]const u8, 3, "255", try p5.parse(fa, "255"));
+    try expectErr([]const u8, 0, try p5.parse(fa, "+255"));
+    try expectErr([]const u8, 0, try p5.parse(fa, "-255"));
 }
 
 /// Same as `intToken` but also converts the parsed string to an integer. This parser will at most

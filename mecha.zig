@@ -851,7 +851,7 @@ pub const IntOptions = struct {
 pub fn intToken(comptime options: IntOptions) Parser([]const u8) {
     debug.assert(options.max_digits != 0);
     const sign_parser = comptime if (options.parse_sign)
-        oneOf(.{ ascii.char('-').asStr(), ascii.char('+').asStr(), noop.asStr() })
+        oneOf(.{ ascii.char('-').discard(), ascii.char('+').discard(), noop })
     else
         noop;
     return comptime combine(.{

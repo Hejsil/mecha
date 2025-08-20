@@ -82,6 +82,6 @@ Then add the following to `build.zig`:
 
 ```zig
 const mecha = b.dependency("mecha", .{});
-exe.root_module.addImport("mecha", clap.module("mecha"));
+exe.root_module.addImport("mecha", mecha.module("mecha"));
 ```
 

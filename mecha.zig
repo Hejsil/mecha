@@ -1069,6 +1069,104 @@ test "ref" {
     try expectOk(void, 1, {}, try Scope.digit.parse(fa, "0"));
 }
 
+/// Similar to `ref`, but the passed function can accept a Parser parameter as a
+/// `recursiveRef` pointing to the function's return value, and it returns this passed ref.
+///
+/// recursiveRef differs from a regular ref in that it internally implements a Packet parsing
+/// algorithm that supports left recursion. Therefore, you can use this to express
+/// left-recursive grammars that are typically not allowed. In exchange for this flexibility,
+/// there is a performance cost, and it must be used with an allocator.
+/// ```
+/// const expr = recursiveRef(struct {
+///     fn f(comptime _expr: anytype) Parser(void) {
+///         return oneOf(.{
+///             combine(.{ _expr, ascii.char('+').discard(), _expr }).discard(),
+///             ascii.char('0').discard(),
+///         });
+///     }
+/// }.f);
+/// expr.parse("0+0");
+/// ```
+///
+/// By design, if recursiveRef is used in an ambiguous grammar such as
+/// `expr := expr "+" expr | num`, the parsing result will be right-associative. If you need
+/// a left-associative result, you should modify the grammar to something like
+/// `expr := expr "+" num | num` to enforce left associativity.
+///
+/// Unless you know what you are doing, please be cautious not to write code likes below, as
+/// the function does not return a regular ref. It establishes a memoization context upon the
+/// first call. You must ensure that the parser wrapped by `recursiveRef` is called first in a
+/// homogeneous parsing process. Therefore, the following code will not work.
+/// ```
+/// const rawExpr = oneOf(.{
+///     combine(.{ expr, ascii.char('+').discard(), expr }).discard(),
+///     ascii.char('0').discard(),
+/// });
+/// const expr = recursiveRef(struct {
+///     fn f(comptime _expr: anytype) Parser(void) {
+///         return rawExpr;
+///     }
+/// }.f);
+/// rawExpr.parse("0+0");
+/// ```
+pub fn recursiveRef(comptime func: anytype) ReturnType(@TypeOf(func)) {
+    const T = ParserResult(ReturnType(@TypeOf(func)));
+    const Res = Result(T);
+
+    return struct {
+        threadlocal var memo: std.AutoArrayHashMapUnmanaged(usize, Res) = .empty;
+
+        const parser = Parser(T){ .parse = parse };
+        const innerParser = func(parser);
+
+        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
+            const key: usize = @intFromPtr(str.ptr);
+            const entry = try memo.getOrPut(allocator, key);
+            if (entry.found_existing)
+                return entry.value_ptr.*;
+
+            entry.value_ptr.* = Res.err(0);
+            defer {
+                if (entry.index == 0) {
+                    memo.deinit(allocator);
+                    memo = .empty;
+                }
+            }
+
+            while (true) {
+                const res = try innerParser.parse(allocator, str);
+
+                const p = &memo.values()[entry.index];
+                if (res.index <= p.index)
+                    break;
+
+                p.* = res;
+            }
+
+            return memo.values()[entry.index];
+        }
+    }.parser;
+}
+
+test "recursiveRef" {
+    const a = testing.allocator;
+    const Scope = struct {
+        const num = oneOf(.{ ascii.char('0'), ascii.char('1') }).discard();
+        const expr = recursiveRef(struct {
+            fn f(comptime _expr: anytype) Parser(void) {
+                return oneOf(.{
+                    combine(.{ _expr, ascii.char('+').discard(), num }).discard(),
+                    num,
+                });
+            }
+        }.f);
+    };
+    const start = Scope.expr;
+    try expectOk(void, 5, {}, try start.parse(a, "1+0+1"));
+    try expectOk(void, 3, {}, try start.parse(a, "1+0"));
+    try expectOk(void, 1, {}, try start.parse(a, "1"));
+}
+
 test "pos on fail" {
     const fa = testing.failing_allocator;
     const p1 = comptime combine(.{

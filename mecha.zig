@@ -243,7 +243,7 @@ pub fn many(comptime parser: anytype, comptime options: ManyOptions) Parser(Many
             var res = if (options.collect)
                 try std.ArrayListUnmanaged(Element).initCapacity(allocator, options.min)
             else {};
-            errdefer if (options.collect) res.deinit(allocator);
+            defer if (options.collect) res.deinit(allocator);
 
             var index: usize = 0;
             var i: usize = 0;
@@ -330,6 +330,9 @@ test "many" {
 
     var expect = [_]u21{ 'Ā', 'Ā', 'Ā' };
     try expectOk([]u21, 6, &expect, res);
+
+    const p6 = comptime utf8.range(0x100, 0x100).many(.{ .collect = true, .min = 1 });
+    try expectErr([]u21, 0, try p6.parse(a, ""));
 }
 
 /// Construct a parser that will call `parser` on the string but never fails to parse. The parser's

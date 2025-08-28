@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) void {
         "mecha.zig",
         "example/rgb.zig",
         "example/json.zig",
+        "example/math.zig",
     }) |test_file| {
         const tests = b.addTest(.{
             .root_module = b.createModule(.{

@@ -1044,65 +1044,8 @@ test "enumeration" {
 pub fn ref(comptime func: anytype) ReturnType(@TypeOf(func)) {
     const P = ReturnType(@TypeOf(func));
     return .{ .parse = struct {
-        const T = ParserResult(P);
-        const Res = Result(T);
-        const Entry = struct {
-            in_progress: bool,
-            result: Res,
-        };
-        var memo_inited: bool = false;
-        var memo: std.AutoHashMap(usize, Entry) = undefined;
-        var depth: usize = 0;
-
-        fn ensureInit() void {
-            if (!memo_inited) {
-                memo = std.AutoHashMap(usize, Entry).init(std.heap.page_allocator);
-                memo_inited = true;
-            }
-        }
-
-        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
-            ensureInit();
-            depth += 1;
-            defer {
-                depth -= 1;
-                if (depth == 0 and memo_inited) {
-                    memo.deinit();
-                    memo_inited = false;
-                }
-            }
-            const key: usize = @intFromPtr(str.ptr) ^ (@intFromPtr(&func) << 1);
-
-            if (memo.getPtr(key)) |entry_ptr| {
-                if (entry_ptr.*.in_progress) return entry_ptr.*.result;
-                return entry_ptr.*.result;
-            }
-
-            try memo.put(key, .{ .in_progress = true, .result = Res.err(0) });
-
-            while (true) {
-                const res = try func().parse(allocator, str);
-                const entry_ptr = memo.getPtr(key).?;
-                var improved = false;
-                switch (res.value) {
-                    .ok => {
-                        if (res.index > entry_ptr.*.result.index) {
-                            entry_ptr.*.result = res;
-                            improved = true;
-                        }
-                    },
-                    .err => {
-                        if (res.index > entry_ptr.*.result.index) {
-                            entry_ptr.*.result = res;
-                            improved = true;
-                        }
-                    },
-                }
-                if (!improved) break;
-            }
-
-            memo.getPtr(key).?.*.in_progress = false;
-            return memo.getPtr(key).?.*.result;
+        fn parse(allocator: mem.Allocator, str: []const u8) Error!Result(ParserResult(P)) {
+            return func().parse(allocator, str);
         }
     }.parse };
 }
@@ -1123,22 +1066,121 @@ test "ref" {
     try expectOk(void, 1, {}, try Scope.digit.parse(fa, "0"));
 }
 
-test "left recursion expr" {
-    const fa = testing.failing_allocator;
+/// Similar to `ref`, but the passed function can accept a Parser parameter as a
+/// `recursiveRef` pointing to the function's return value, and it returns this passed ref.
+///
+/// recursiveRef differs from a regular ref in that it internally implements a Packet parsing
+/// algorithm that supports left recursion. Therefore, you can use this to express
+/// left-recursive grammars that are typically not allowed. In exchange for this flexibility,
+/// there is a performance cost, and it must be used with an allocator.
+/// ```
+/// const expr = recursiveRef(struct {
+///     fn f(comptime _expr: anytype) Parser(void) {
+///         return oneOf(.{
+///             combine(.{ _expr, ascii.char('+').discard(), _expr }).discard(),
+///             ascii.char('0').discard(),
+///         });
+///     }
+/// }.f);
+/// expr.parse("0+0");
+/// ```
+///
+/// By design, if recursiveRef is used in an ambiguous grammar such as
+/// `expr := expr "+" expr | num`, the parsing result will be right-associative. If you need
+/// a left-associative result, you should modify the grammar to something like
+/// `expr := expr "+" num | num` to enforce left associativity.
+///
+/// Unless you know what you are doing, please be cautious not to write code likes below, as
+/// the function does not return a regular ref. It establishes a memoization context upon the
+/// first call. You must ensure that the parser wrapped by `recursiveRef` is called first in a
+/// homogeneous parsing process. Therefore, the following code will not work.
+/// ```
+/// const rawExpr = oneOf(.{
+///     combine(.{ expr, ascii.char('+').discard(), expr }).discard(),
+///     ascii.char('0').discard(),
+/// });
+/// const expr = recursiveRef(struct {
+///     fn f(comptime _expr: anytype) Parser(void) {
+///         return rawExpr;
+///     }
+/// }.f);
+/// rawExpr.parse("0+0");
+/// ```
+pub fn recursiveRef(comptime func: anytype) ReturnType(@TypeOf(func)) {
+    const P = ReturnType(@TypeOf(func));
+    const T = ParserResult(P);
+    const Res = Result(T);
+    const Entry = struct {
+        in_progress: bool,
+        result: Res,
+    };
+    return struct {
+        var memo_inited: bool = false;
+        var memo: std.AutoHashMap(usize, Entry) = undefined;
+        var depth: usize = 0;
+
+        fn ensureInit(allocator: mem.Allocator) void {
+            if (!memo_inited) {
+                memo = std.AutoHashMap(usize, Entry).init(allocator);
+                memo_inited = true;
+            }
+        }
+
+        const parser = Parser(T){ .parse = parse };
+        const innerParser = func(parser);
+        fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
+            ensureInit(allocator);
+            depth += 1;
+            defer {
+                depth -= 1;
+                if (depth == 0 and memo_inited) {
+                    memo.deinit();
+                    memo_inited = false;
+                }
+            }
+            const key: usize = @intFromPtr(str.ptr);
+
+            if (memo.getPtr(key)) |entry_ptr| {
+                if (entry_ptr.*.in_progress) return entry_ptr.*.result;
+                return entry_ptr.*.result;
+            }
+
+            try memo.put(key, .{ .in_progress = true, .result = Res.err(0) });
+            const p = memo.getPtr(key).?;
+
+            while (true) {
+                const res = try innerParser.parse(allocator, str);
+                var improved = false;
+                if (res.index > p.*.result.index) {
+                    p.*.result = res;
+                    improved = true;
+                }
+                if (!improved) break;
+            }
+
+            p.*.in_progress = false;
+            return p.*.result;
+        }
+    }.parser;
+}
+
+test "recursiveRef" {
+    const a = testing.allocator;
     const Scope = struct {
         const num = oneOf(.{ ascii.char('0'), ascii.char('1') }).discard();
-        const expr = oneOf(.{
-            combine(.{ ref(exprRef), ascii.char('+').discard(), num }).discard(),
-            num,
-        });
-        fn exprRef() Parser(void) {
-            return expr;
-        }
+        const expr = recursiveRef(struct {
+            fn f(comptime _expr: anytype) Parser(void) {
+                return oneOf(.{
+                    combine(.{ _expr, ascii.char('+').discard(), num }).discard(),
+                    num,
+                });
+            }
+        }.f);
     };
-    const start = ref(Scope.exprRef);
-    try expectOk(void, 5, {}, try start.parse(fa, "1+0+1"));
-    try expectOk(void, 3, {}, try start.parse(fa, "1+0"));
-    try expectOk(void, 1, {}, try start.parse(fa, "1"));
+    const start = Scope.expr;
+    try expectOk(void, 5, {}, try start.parse(a, "1+0+1"));
+    try expectOk(void, 3, {}, try start.parse(a, "1+0"));
+    try expectOk(void, 1, {}, try start.parse(a, "1"));
 }
 
 test "pos on fail" {

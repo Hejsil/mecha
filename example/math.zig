@@ -2,12 +2,12 @@ const mecha = @import("mecha");
 const std = @import("std");
 const testing = std.testing;
 
-// expr := expr + part
-//      |  expr - part
+// expr := expr + expr
+//      |  expr - expr
 //      |  part;
 
-// part := part * num
-//      |  part / num
+// part := part * part
+//      |  part / part
 //      |  num
 
 const Expr = struct {
@@ -23,48 +23,47 @@ const sub = mecha.ascii.char('-');
 const mul = mecha.ascii.char('*');
 const div = mecha.ascii.char('/');
 
-fn exprRef() mecha.Parser(i32) {
-    return expr;
-}
-const expr_ref = mecha.ref(exprRef);
+const expr = mecha.recursiveRef(struct {
+    fn f(comptime _expr: anytype) mecha.Parser(i32) {
+        return mecha.oneOf(.{
+            mecha.combine(.{ _expr, mecha.oneOf(.{ add, sub }), part })
+                .map(toResult),
+            part,
+        });
+    }
+}.f);
 
-const expr = mecha.oneOf(.{
-    mecha.combine(.{ expr_ref, add, part_ref })
-        .map(mecha.toStruct(Expr))
-        .map(toResult),
-    mecha.combine(.{ expr_ref, sub, part_ref })
-        .map(mecha.toStruct(Expr))
-        .map(toResult),
-    part_ref,
-});
+const part = mecha.recursiveRef(struct {
+    fn f(comptime _part: anytype) mecha.Parser(i32) {
+        return mecha.oneOf(.{
+            mecha.combine(.{ _part, mecha.oneOf(.{ mul, div }), atom })
+                .map(toResult),
+            atom,
+        });
+    }
+}.f);
 
-fn partRef() mecha.Parser(i32) {
-    return part;
-}
-
-const part_ref = mecha.ref(partRef);
-
-const part = mecha.oneOf(.{
-    mecha.combine(.{ part_ref, mul, num })
-        .map(mecha.toStruct(Expr))
-        .map(toResult),
-    mecha.combine(.{ part_ref, div, num })
-        .map(mecha.toStruct(Expr))
-        .map(toResult),
+const atom = mecha.oneOf(.{
+    mecha.combine(.{
+        mecha.ascii.char('(').discard(),
+        expr,
+        mecha.ascii.char(')').discard(),
+    }),
     num,
 });
 
-pub fn toResult(pexpr: Expr) i32 {
-    return switch (pexpr.op) {
-        '+' => pexpr.left + pexpr.right,
-        '-' => pexpr.left - pexpr.right,
-        '*' => pexpr.left * pexpr.right,
-        '/' => @divTrunc(pexpr.left, pexpr.right),
+pub fn toResult(pexpr: anytype) i32 {
+    const s = mecha.toStruct(Expr)(pexpr);
+    return switch (s.op) {
+        '+' => s.left + s.right,
+        '-' => s.left - s.right,
+        '*' => s.left * s.right,
+        '/' => @divTrunc(s.left, s.right),
         else => unreachable,
     };
 }
 
-const parser = expr_ref;
+const parser = expr;
 
 pub fn parseExpression(allocator: std.mem.Allocator, input: []const u8) !i32 {
     const result = try parser.parse(allocator, input);
@@ -98,5 +97,8 @@ test "simple calc" {
 test "operator priority" {
     const allocator = testing.allocator;
     try testing.expectEqual(@as(i32, 7), try parseExpression(allocator, "1+3*2"));
+    try testing.expectEqual(@as(i32, 8), try parseExpression(allocator, "(1+3)*2"));
     try testing.expectEqual(@as(i32, 7), try parseExpression(allocator, "3*2+1"));
+    try testing.expectEqual(@as(i32, 4), try parseExpression(allocator, "4/2*2"));
+    try testing.expectEqual(@as(i32, 1), try parseExpression(allocator, "4/(2*2)"));
 }

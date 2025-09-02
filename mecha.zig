@@ -1044,6 +1044,9 @@ test "enumeration" {
 ///     return digits;
 /// };
 /// ```
+///
+/// Note: `ref` does not support [left recursion](https://en.wikipedia.org/wiki/Left_recursion).
+///        Use `recursiveRef` for that
 pub fn ref(comptime func: anytype) ReturnType(@TypeOf(func)) {
     const P = ReturnType(@TypeOf(func));
     return .{ .parse = struct {

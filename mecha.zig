@@ -29,6 +29,7 @@ pub fn Parser(comptime _T: type) type {
         pub const manyN = mecha.manyN;
         pub const mapConst = mecha.mapConst;
         pub const map = mecha.map;
+        pub const mapWithAllocator = mecha.mapWithAllocator;
         pub const opt = mecha.opt;
     };
 }
@@ -566,6 +567,29 @@ pub fn convert(
             }
         }
     }.parse };
+}
+
+/// Constructs a parser that has its result converted with the `conv` function. The ´conv`
+/// functions signature is `*const fn (ParserResult(parser), mem.Allocator) T`, so this function should only be
+/// used for conversions that cannot fail. See `convert`.
+pub fn mapWithAllocator(
+    comptime parser: anytype,
+    comptime conv: anytype,
+) Parser(ReturnType(@TypeOf(conv))) {
+    const ConvT = ReturnType(@TypeOf(conv));
+    const Res = Result(ConvT);
+    typecheckParser(@TypeOf(parser));
+    return .{
+        .parse = struct {
+            fn parse(allocator: mem.Allocator, str: []const u8) Error!Res {
+                const res = try parser.parse(allocator, str);
+                return switch (res.value) {
+                    .err => return Res.err(res.index),
+                    .ok => |value| return Res.ok(res.index, conv(allocator, value)),
+                };
+            }
+        }.parse,
+    };
 }
 
 /// Constructs a convert function for `convert` that takes a string and parses it to an int of

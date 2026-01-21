@@ -505,9 +505,14 @@ test "oneOf" {
 /// `Handler.onEnter` function signature is `const fn ([]const u8) InspectState`.
 /// `Handler.onSuccess` function signature is `const fn ([]const u8, ParserResult(T), InspectState) void`.
 /// `Hanlder.onFailure` function signature is `const fn ([]const u8, ParserResult(T), InspectState) void`.
+pub const Inspector = struct {
+    onEnter: ?*const fn ([]const u8) void,
+    onExit: ?*const fn ([]const u8, ParserResult(T)) void,
+};
+
 pub fn inspect(
     comptime parser: anytype,
-    comptime Handler: type,
+    comptime inspector: Inspector,
 ) Parser(ParserResult(@TypeOf(parser))) {
     const Res = Result(ParserResult(@TypeOf(parser)));
     return .{ .parse = struct {

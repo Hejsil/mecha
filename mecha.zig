@@ -501,37 +501,33 @@ test "oneOf" {
     try expectErr(u8, 0, try p1.parse(fa, "q"));
 }
 
-/// Inspects the parsing process by calling `Handler.onEnter` before parsing and `Handler.onSuccess` after parsing.
-/// `Handler.onEnter` function signature is `const fn ([]const u8) InspectState`.
-/// `Handler.onSuccess` function signature is `const fn ([]const u8, ParserResult(T), InspectState) void`.
-/// `Hanlder.onFailure` function signature is `const fn ([]const u8, ParserResult(T), InspectState) void`.
-pub const Inspector = struct {
-    onEnter: ?*const fn ([]const u8) void,
-    onExit: ?*const fn ([]const u8, ParserResult(T)) void,
-};
+/// Inspector struct used with `inspect` parser combinator.
+/// `State` is the type returned by `Handler.onEnter` and passed to `Handler.onExit`.
+/// If `Handler.onEnter` is `null`, `State` must be set to `void`.
+pub fn Inspector(comptime T: type, comptime State: type) type {
+    return struct {
+        onEnter: ?*const fn ([]const u8) State,
+        onExit: ?*const fn ([]const u8, Result(T), State) void,
+    };
+}
 
+/// Inspects the parsing process by calling `inspector.onEnter` before parsing and `inspector.onExit` after parsing.
+/// `inspector.onEnter` function signature is `?*const fn ([]const u8) InspectState`.
+/// `inspector.onExit` function signature is `?*const fn ([]const u8, ParserResult(T), InspectState) void`.
 pub fn inspect(
     comptime parser: anytype,
-    comptime inspector: Inspector,
+    comptime State: type,
+    comptime inspector: Inspector(ParserResult(@TypeOf(parser)), State),
 ) Parser(ParserResult(@TypeOf(parser))) {
     const Res = Result(ParserResult(@TypeOf(parser)));
     return .{ .parse = struct {
         fn parse(allocator: mem.Allocator, src: []const u8) Error!Res {
-            const state = if (@hasDecl(Handler, "onEnter"))
-                Handler.onEnter(src)
+            const state = if (inspector.onEnter) |onEnter|
+                onEnter(src)
             else {};
             const res = try parser.parse(allocator, src);
-            switch (res.value) {
-                .ok => {
-                    if (@hasDecl(Handler, "onSuccess")) {
-                        Handler.onSuccess(src, res, state);
-                    }
-                },
-                .err => {
-                    if (@hasDecl(Handler, "onFailure")) {
-                        Handler.onFailure(src, res, state);
-                    }
-                },
+            if (inspector.onExit) |onExit| {
+                onExit(src, res, state);
             }
             return res;
         }
@@ -546,29 +542,32 @@ test "inspect" {
         pub var success_count: usize = 0;
         pub var failure_count: usize = 0;
 
-        pub const InspectState = struct {};
+        pub const InspectState = void;
 
-        pub const onEnter = struct {
-            fn f(_: []const u8) InspectState {
-                enter_count += 1;
-                return InspectState{};
-            }
-        }.f;
-
-        pub const onSuccess = struct {
-            fn f(_: []const u8, _: anytype, _: InspectState) void {
-                success_count += 1;
-            }
-        }.f;
-
-        pub const onFailure = struct {
-            fn f(_: []const u8, _: anytype, _: InspectState) void {
-                failure_count += 1;
-            }
-        }.f;
+        pub fn getInspect(comptime T: type) Inspector(T, InspectState) {
+            return .{
+                .onEnter = &struct {
+                    pub fn onEnter(_: []const u8) InspectState {
+                        enter_count += 1;
+                    }
+                }.onEnter,
+                .onExit = &struct {
+                    pub fn onExit(_: []const u8, res: Result(T), _: InspectState) void {
+                        switch (res.value) {
+                            .ok => {
+                                success_count += 1;
+                            },
+                            .err => {
+                                failure_count += 1;
+                            },
+                        }
+                    }
+                }.onExit,
+            };
+        }
     };
 
-    const p1 = comptime ascii.char('a').inspect(InspectHandler);
+    const p1 = comptime ascii.char('a').inspect(void, InspectHandler.getInspect(u8));
     try expectOk(u8, 1, 'a', try p1.parse(fa, "a"));
     try expectOk(u8, 1, 'a', try p1.parse(fa, "aa"));
     try expectErr(u8, 0, try p1.parse(fa, "b"));
@@ -582,23 +581,62 @@ test "inspect" {
         pub var success_count: usize = 0;
         pub var failure_count: usize = 0;
 
-        pub const onSuccess = struct {
-            fn f(_: []const u8, _: anytype, _: void) void {
-                success_count += 1;
-            }
-        }.f;
+        pub const InspectState = void;
 
-        pub const onFailure = struct {
-            fn f(_: []const u8, _: anytype, _: void) void {
-                failure_count += 1;
-            }
-        }.f;
+        pub fn getInspect(comptime T: type) Inspector(T, InspectState) {
+            return .{
+                .onEnter = null,
+                .onExit = &struct {
+                    pub fn onExit(_: []const u8, res: Result(T), _: InspectState) void {
+                        switch (res.value) {
+                            .ok => {
+                                success_count += 1;
+                            },
+                            .err => {
+                                failure_count += 1;
+                            },
+                        }
+                    }
+                }.onExit,
+            };
+        }
     };
-    const p2 = comptime ascii.char('a').inspect(InspectHandlerNoEnter);
+    const p2 = comptime ascii.char('a').inspect(void, InspectHandlerNoEnter.getInspect(u8));
     try expectOk(u8, 1, 'a', try p2.parse(fa, "a"));
     try expectErr(u8, 0, try p2.parse(fa, "b"));
     try testing.expectEqual(1, InspectHandlerNoEnter.success_count);
     try testing.expectEqual(1, InspectHandlerNoEnter.failure_count);
+
+    // Usage for State
+    const InspectHandlerWithState = struct {
+        pub var total_parsed: usize = 0;
+        pub const InspectState = usize;
+
+        pub fn getInspect(comptime T: type) Inspector(T, InspectState) {
+            return .{
+                .onEnter = &struct {
+                    pub fn onEnter(src: []const u8) InspectState {
+                        return src.len;
+                    }
+                }.onEnter,
+                .onExit = &struct {
+                    pub fn onExit(_: []const u8, res: Result(T), state: InspectState) void {
+                        switch (res.value) {
+                            .ok => {
+                                total_parsed += state;
+                            },
+                            .err => {},
+                        }
+                    }
+                }.onExit,
+            };
+        }
+    };
+    const p3 = comptime ascii.char('a').inspect(InspectHandlerWithState.InspectState, InspectHandlerWithState.getInspect(u8));
+    try expectOk(u8, 1, 'a', try p3.parse(fa, "a"));
+    try expectOk(u8, 1, 'a', try p3.parse(fa, "aa"));
+    try expectErr(u8, 0, try p3.parse(fa, "b"));
+    try testing.expectEqual(3, InspectHandlerWithState.total_parsed);
 }
 
 /// Takes any parser and converts it to a parser where the result is a string that contains all

@@ -30,6 +30,7 @@ pub fn Parser(comptime _T: type) type {
         pub const mapConst = mecha.mapConst;
         pub const map = mecha.map;
         pub const opt = mecha.opt;
+        pub const inspect = mecha.inspect;
     };
 }
 
@@ -498,6 +499,131 @@ test "oneOf" {
     try expectOk(u8, 1, 'd', try p1.parse(fa, "da"));
     try expectOk(u8, 1, 'e', try p1.parse(fa, "ea"));
     try expectErr(u8, 0, try p1.parse(fa, "q"));
+}
+
+/// Inspector struct used with `inspect` parser combinator.
+/// `State` is the type returned by `Handler.onEnter` and passed to `Handler.onExit`.
+/// If `Handler.onEnter` is `null`, `State` must be set to `void`.
+pub fn Inspector(comptime T: type, comptime State: type) type {
+    return struct {
+        onEnter: ?*const fn ([]const u8) State,
+        onExit: ?*const fn ([]const u8, Result(T), State) void,
+    };
+}
+
+/// Inspects the parsing process by calling `inspector.onEnter` before parsing and `inspector.onExit` after parsing.
+/// See `Inspector`
+pub fn inspect(
+    comptime parser: anytype,
+    comptime State: type,
+    comptime inspector: Inspector(ParserResult(@TypeOf(parser)), State),
+) Parser(ParserResult(@TypeOf(parser))) {
+    const Res = Result(ParserResult(@TypeOf(parser)));
+    return .{ .parse = struct {
+        fn parse(allocator: mem.Allocator, src: []const u8) Error!Res {
+            const state = if (inspector.onEnter) |onEnter|
+                onEnter(src)
+            else {};
+            const res = try parser.parse(allocator, src);
+            if (inspector.onExit) |onExit| {
+                onExit(src, res, state);
+            }
+            return res;
+        }
+    }.parse };
+}
+
+test "inspect" {
+    const fa = testing.failing_allocator;
+
+    const CountingInspector = struct {
+        var enter_count: usize = 0;
+        var success_count: usize = 0;
+        var failure_count: usize = 0;
+
+        fn get(comptime T: type) Inspector(T, void) {
+            const Functions = struct {
+                fn onEnter(_: []const u8) void {
+                    enter_count += 1;
+                }
+
+                fn onExit(_: []const u8, res: Result(T), _: void) void {
+                    switch (res.value) {
+                        .ok => success_count += 1,
+                        .err => failure_count += 1,
+                    }
+                }
+            };
+            return .{
+                .onEnter = Functions.onEnter,
+                .onExit = Functions.onExit,
+            };
+        }
+    };
+
+    const p1 = comptime ascii.char('a').inspect(void, CountingInspector.get(u8));
+    try expectOk(u8, 1, 'a', try p1.parse(fa, "a"));
+    try expectOk(u8, 1, 'a', try p1.parse(fa, "aa"));
+    try expectErr(u8, 0, try p1.parse(fa, "b"));
+
+    try testing.expectEqual(3, CountingInspector.enter_count);
+    try testing.expectEqual(2, CountingInspector.success_count);
+    try testing.expectEqual(1, CountingInspector.failure_count);
+
+    // Inspect handler without onEnter
+    const CountingInspectorNoEnter = struct {
+        var success_count: usize = 0;
+        var failure_count: usize = 0;
+
+        fn get(comptime T: type) Inspector(T, void) {
+            const Functions = struct {
+                fn onExit(_: []const u8, res: Result(T), _: void) void {
+                    switch (res.value) {
+                        .ok => success_count += 1,
+                        .err => failure_count += 1,
+                    }
+                }
+            };
+            return .{
+                .onEnter = null,
+                .onExit = Functions.onExit,
+            };
+        }
+    };
+    const p2 = comptime ascii.char('a').inspect(void, CountingInspectorNoEnter.get(u8));
+    try expectOk(u8, 1, 'a', try p2.parse(fa, "a"));
+    try expectErr(u8, 0, try p2.parse(fa, "b"));
+    try testing.expectEqual(1, CountingInspectorNoEnter.success_count);
+    try testing.expectEqual(1, CountingInspectorNoEnter.failure_count);
+
+    // Usage for State
+    const CountParsedBytesInspector = struct {
+        var total_parsed: usize = 0;
+
+        fn get(comptime T: type) Inspector(T, usize) {
+            const Functions = struct {
+                fn onEnter(src: []const u8) usize {
+                    return src.len;
+                }
+
+                fn onExit(_: []const u8, res: Result(T), state: usize) void {
+                    switch (res.value) {
+                        .ok => total_parsed += state,
+                        .err => {},
+                    }
+                }
+            };
+            return .{
+                .onEnter = Functions.onEnter,
+                .onExit = Functions.onExit,
+            };
+        }
+    };
+    const p3 = comptime ascii.char('a').inspect(usize, CountParsedBytesInspector.get(u8));
+    try expectOk(u8, 1, 'a', try p3.parse(fa, "a"));
+    try expectOk(u8, 1, 'a', try p3.parse(fa, "aa"));
+    try expectErr(u8, 0, try p3.parse(fa, "b"));
+    try testing.expectEqual(3, CountParsedBytesInspector.total_parsed);
 }
 
 /// Takes any parser and converts it to a parser where the result is a string that contains all

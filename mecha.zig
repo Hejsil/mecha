@@ -583,7 +583,7 @@ test "inspect" {
             return .{
                 .onEnter = null,
                 .onExit = &struct {
-                    pub fn onExit(_: []const u8, res: Result(T), _: InspectState) void {
+                    fn onExit(_: []const u8, res: Result(T), _: InspectState) void {
                         switch (res.value) {
                             .ok => {
                                 success_count += 1;
@@ -611,12 +611,12 @@ test "inspect" {
         fn get(comptime T: type) Inspector(T, InspectState) {
             return .{
                 .onEnter = &struct {
-                    pub fn onEnter(src: []const u8) InspectState {
+                    fn onEnter(src: []const u8) InspectState {
                         return src.len;
                     }
                 }.onEnter,
                 .onExit = &struct {
-                    pub fn onExit(_: []const u8, res: Result(T), state: InspectState) void {
+                    fn onExit(_: []const u8, res: Result(T), state: InspectState) void {
                         switch (res.value) {
                             .ok => {
                                 total_parsed += state;

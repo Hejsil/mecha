@@ -30,6 +30,7 @@ pub fn Parser(comptime _T: type) type {
         pub const mapConst = mecha.mapConst;
         pub const map = mecha.map;
         pub const opt = mecha.opt;
+        pub const inspect = mecha.inspect;
     };
 }
 
@@ -498,6 +499,101 @@ test "oneOf" {
     try expectOk(u8, 1, 'd', try p1.parse(fa, "da"));
     try expectOk(u8, 1, 'e', try p1.parse(fa, "ea"));
     try expectErr(u8, 0, try p1.parse(fa, "q"));
+}
+
+/// Inspects the parsing process by calling `Handler.onEnter` before parsing and `Handler.onSuccess` after parsing.
+/// `Handler.onEnter` function signature is `const fn ([]const u8) InspectState`.
+/// `Handler.onSuccess` function signature is `const fn ([]const u8, ParserResult(T), InspectState) void`.
+/// `Hanlder.onFailure` function signature is `const fn ([]const u8, ParserResult(T), InspectState) void`.
+pub fn inspect(
+    comptime parser: anytype,
+    comptime Handler: type,
+) Parser(ParserResult(@TypeOf(parser))) {
+    const Res = Result(ParserResult(@TypeOf(parser)));
+    return .{ .parse = struct {
+        fn parse(allocator: mem.Allocator, src: []const u8) Error!Res {
+            const state = if (@hasDecl(Handler, "onEnter"))
+                Handler.onEnter(src)
+            else {};
+            const res = try parser.parse(allocator, src);
+            switch (res.value) {
+                .ok => {
+                    if (@hasDecl(Handler, "onSuccess")) {
+                        Handler.onSuccess(src, res, state);
+                    }
+                },
+                .err => {
+                    if (@hasDecl(Handler, "onFailure")) {
+                        Handler.onFailure(src, res, state);
+                    }
+                },
+            }
+            return res;
+        }
+    }.parse };
+}
+
+test "inspect" {
+    const fa = testing.failing_allocator;
+
+    const InspectHandler = struct {
+        pub var enter_count: usize = 0;
+        pub var success_count: usize = 0;
+        pub var failure_count: usize = 0;
+
+        pub const InspectState = struct {};
+
+        pub const onEnter = struct {
+            fn f(_: []const u8) InspectState {
+                enter_count += 1;
+                return InspectState{};
+            }
+        }.f;
+
+        pub const onSuccess = struct {
+            fn f(_: []const u8, _: anytype, _: InspectState) void {
+                success_count += 1;
+            }
+        }.f;
+
+        pub const onFailure = struct {
+            fn f(_: []const u8, _: anytype, _: InspectState) void {
+                failure_count += 1;
+            }
+        }.f;
+    };
+
+    const p1 = comptime ascii.char('a').inspect(InspectHandler);
+    try expectOk(u8, 1, 'a', try p1.parse(fa, "a"));
+    try expectOk(u8, 1, 'a', try p1.parse(fa, "aa"));
+    try expectErr(u8, 0, try p1.parse(fa, "b"));
+
+    try testing.expectEqual(3, InspectHandler.enter_count);
+    try testing.expectEqual(2, InspectHandler.success_count);
+    try testing.expectEqual(1, InspectHandler.failure_count);
+
+    // Inspect handler without onEnter
+    const InspectHandlerNoEnter = struct {
+        pub var success_count: usize = 0;
+        pub var failure_count: usize = 0;
+
+        pub const onSuccess = struct {
+            fn f(_: []const u8, _: anytype, _: void) void {
+                success_count += 1;
+            }
+        }.f;
+
+        pub const onFailure = struct {
+            fn f(_: []const u8, _: anytype, _: void) void {
+                failure_count += 1;
+            }
+        }.f;
+    };
+    const p2 = comptime ascii.char('a').inspect(InspectHandlerNoEnter);
+    try expectOk(u8, 1, 'a', try p2.parse(fa, "a"));
+    try expectErr(u8, 0, try p2.parse(fa, "b"));
+    try testing.expectEqual(1, InspectHandlerNoEnter.success_count);
+    try testing.expectEqual(1, InspectHandlerNoEnter.failure_count);
 }
 
 /// Takes any parser and converts it to a parser where the result is a string that contains all

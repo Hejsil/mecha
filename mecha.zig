@@ -11,6 +11,7 @@ const builtin = std.builtin;
 
 pub const ascii = @import("src/ascii.zig");
 pub const utf8 = @import("src/utf8.zig");
+pub const expression = @import("src/expression.zig");
 
 const mecha = @This();
 
@@ -1343,4 +1344,8 @@ pub fn expectOk(
     actual: Result(T),
 ) !void {
     return try expectResult(T, Result(T).ok(expected_index, expected_value), actual);
+}
+
+test {
+    _ = @import("src/expression.zig");
 }

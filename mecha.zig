@@ -25,6 +25,7 @@ pub fn Parser(comptime _T: type) type {
         pub const convert = mecha.convert;
         pub const digit = mecha.digit;
         pub const discard = mecha.discard;
+        pub const expression = mecha.expression;
         pub const many = mecha.many;
         pub const manyN = mecha.manyN;
         pub const mapConst = mecha.mapConst;
@@ -1168,6 +1169,194 @@ test "recursiveRef" {
     try expectOk(void, 5, {}, try start.parse(a, "1+0+1"));
     try expectOk(void, 3, {}, try start.parse(a, "1+0"));
     try expectOk(void, 1, {}, try start.parse(a, "1"));
+}
+
+pub const Associativity = enum {
+    left,
+    right,
+};
+
+pub fn Operator(comptime T: type) type {
+    return struct {
+        value: T,
+        precedence: i32,
+        associativity: Associativity,
+
+        pub fn left(value: T, precedence: i32) Operator(T) {
+            return .{ .value = value, .precedence = precedence, .associativity = .left };
+        }
+
+        pub fn right(value: T, precedence: i32) Operator(T) {
+            return .{ .value = value, .precedence = precedence, .associativity = .right };
+        }
+    };
+}
+
+/// Construct a parser that parses infix binary expressions based on associativity and precedence.
+/// The parser will go over the string, parsing any terminators (using the `term` parser) and operators
+/// (using the `operator` parser). Once a left and right side of an operator has been determined, a
+/// result will be constructed using the `result` function. The way results are constructed depends
+/// on the associativity and precedence returned by the `operator` parser.
+pub fn expression(
+    /// Parser(T): Parses the terms of the expression
+    comptime term: anytype,
+    /// Parser(Operator(O)): Parses the operators returns the operators precedence and associativity
+    comptime operator: anytype,
+    /// fn(T, Operator(O), T) T: Constructs the results of parsing the expressions. "1 + 1" -> result(1, "+", 1) -> 2
+    comptime result: *const fn (
+        ParserResult(@TypeOf(term)),
+        ParserResult(@TypeOf(operator)),
+        ParserResult(@TypeOf(term)),
+    ) ParserResult(@TypeOf(term)),
+) Parser(ParserResult(@TypeOf(term))) {
+    const T = ParserResult(@TypeOf(term));
+
+    return .{
+        .parse = struct {
+            fn parseAfterLhs(
+                allocator: mem.Allocator,
+                min_precedence: i32,
+                left: T,
+                str: []const u8,
+            ) Error!Result(T) {
+                var p: usize = 0;
+                var l = left;
+
+                while (true) {
+                    const op_res = try operator.parse(allocator, str[p..]);
+                    const op = switch (op_res.value) {
+                        // No operator. We're done
+                        .err => return .ok(p, l),
+                        .ok => |op| op,
+                    };
+
+                    if (op.precedence < min_precedence)
+                        return .ok(p, l);
+
+                    p += op_res.index;
+
+                    const r_res = try term.parse(allocator, str[p..]);
+                    var r = switch (r_res.value) {
+                        // No rhs. Return error
+                        .err => {
+                            p -= op_res.index;
+                            return .err(p);
+                        },
+                        .ok => |r| r,
+                    };
+
+                    p += r_res.index;
+
+                    while (true) {
+                        const next_op_res = try operator.parse(allocator, str[p..]);
+                        const next_op = switch (next_op_res.value) {
+                            .err => break,
+                            .ok => |next_op| next_op,
+                        };
+
+                        const process = next_op.precedence > op.precedence or
+                            (next_op.precedence == op.precedence and next_op.associativity == .right);
+                        if (!process)
+                            break;
+
+                        const new_r_res = try parseAfterLhs(allocator, next_op.precedence, r, str[p..]);
+                        const new_r = switch (new_r_res.value) {
+                            .err => return .err(p),
+                            .ok => |new_r| new_r,
+                        };
+
+                        r = new_r;
+                        p += new_r_res.index;
+                    }
+
+                    l = result(l, op, r);
+                }
+            }
+
+            fn parse(allocator: mem.Allocator, str: []const u8) Error!Result(T) {
+                const left_res = try term.parse(allocator, str);
+                const left = switch (left_res.value) {
+                    .err => return left_res,
+                    .ok => |left| left,
+                };
+
+                const res = try parseAfterLhs(allocator, 0, left, str[left_res.index..]);
+                return .{ .value = res.value, .index = left_res.index + res.index };
+            }
+        }.parse,
+    };
+}
+
+test expression {
+    const fa = testing.failing_allocator;
+    const OpEnum = enum { add, sub, mul, div, pow };
+    const Op = Operator(OpEnum);
+
+    const result = struct {
+        fn func(left: i64, op: Op, right: i64) i64 {
+            return switch (op.value) {
+                .add => left + right,
+                .sub => left - right,
+                .mul => left * right,
+                .div => @divFloor(left, right),
+                .pow => math.pow(i64, left, right),
+            };
+        }
+    }.func;
+
+    // Normal world with normal math
+    {
+        const operator = comptime oneOf(.{
+            ascii.char('+').mapConst(Op.left(.add, 1)),
+            ascii.char('-').mapConst(Op.left(.sub, 1)),
+            ascii.char('*').mapConst(Op.left(.mul, 2)),
+            ascii.char('/').mapConst(Op.left(.div, 2)),
+            ascii.char('^').mapConst(Op.right(.pow, 3)),
+        });
+
+        const expr = comptime int(i64, .{}).expression(operator, result);
+
+        try expectOk(i64, 1, 2, try expr.parse(fa, "2"));
+        try expectOk(i64, 5, 2 - 3 - 4, try expr.parse(fa, "2-3-4"));
+        try expectOk(i64, 5, 2 + 3 * 4, try expr.parse(fa, "2+3*4"));
+        try expectOk(i64, 7, 2 * 4 * 6 * 8, try expr.parse(fa, "2*4*6*8"));
+        try expectOk(i64, 7, 2 + math.pow(i64, 4, 6) + 8, try expr.parse(fa, "2+4^6+8"));
+        try expectOk(i64, 7, math.pow(i64, 2, math.pow(i64, 2, 2)) * 8, try expr.parse(fa, "2^2^2*8"));
+        try expectOk(i64, 5, 3 + math.pow(i64, 4, 6), try expr.parse(fa, "3+4^6"));
+        try expectOk(i64, 7, math.pow(i64, 2, 3) + 3 * 3, try expr.parse(fa, "2^3+3*3"));
+        try expectOk(i64, 5, 3 + 4 - 5, try expr.parse(fa, "3+4-5"));
+        try expectOk(i64, 5, 3 * 4 / 5, try expr.parse(fa, "3*4/5"));
+        try expectErr(i64, 5, try expr.parse(fa, "3+4^6*"));
+        try expectErr(i64, 0, try expr.parse(fa, "*3+4^6"));
+        try expectErr(i64, 1, try expr.parse(fa, "3**4^6"));
+    }
+
+    // Weird world with weird math
+    {
+        const operator = comptime oneOf(.{
+            ascii.char('+').mapConst(Op.right(.add, 3)),
+            ascii.char('-').mapConst(Op.right(.sub, 3)),
+            ascii.char('*').mapConst(Op.right(.mul, 2)),
+            ascii.char('/').mapConst(Op.right(.div, 2)),
+            ascii.char('^').mapConst(Op.left(.pow, 1)),
+        });
+
+        const expr = comptime int(i64, .{}).expression(operator, result);
+
+        try expectOk(i64, 1, 2, try expr.parse(fa, "2"));
+        try expectOk(i64, 5, 2 - (3 - 4), try expr.parse(fa, "2-3-4"));
+        try expectOk(i64, 5, (2 + 3) * 4, try expr.parse(fa, "2+3*4"));
+        try expectOk(i64, 7, 2 * 4 * 6 * 8, try expr.parse(fa, "2*4*6*8"));
+        try expectOk(i64, 7, math.pow(i64, 2 + 4, 6 + 8), try expr.parse(fa, "2+4^6+8"));
+        try expectOk(i64, 7, math.pow(i64, 2, math.pow(i64, 2, 2) * 8), try expr.parse(fa, "2^2^2*8"));
+        try expectOk(i64, 5, math.pow(i64, 3 + 4, 6), try expr.parse(fa, "3+4^6"));
+        try expectOk(i64, 7, math.pow(i64, 2, (3 + 3) * 3), try expr.parse(fa, "2^3+3*3"));
+        try expectOk(i64, 5, 3 + (4 - 5), try expr.parse(fa, "3+4-5"));
+        try expectOk(i64, 5, 3 * (4 / 5), try expr.parse(fa, "3*4/5"));
+        try expectErr(i64, 5, try expr.parse(fa, "3+4^6*"));
+        try expectErr(i64, 0, try expr.parse(fa, "*3+4^6"));
+        try expectErr(i64, 1, try expr.parse(fa, "3**4^6"));
+    }
 }
 
 test "pos on fail" {

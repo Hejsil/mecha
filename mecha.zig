@@ -381,7 +381,7 @@ fn Combine(comptime parsers: anytype) type {
 /// HACK: Zig cannot cache functions that takes pointers (slices)
 ///       so we have to pass the types as an array, by value.
 fn Tuple(comptime n: usize, comptime types: [n]type) type {
-    return meta.Tuple(&types);
+    return @Tuple(&types);
 }
 
 /// Takes a tuple of `Parser(any)` and constructs a parser that only succeeds if all parsers

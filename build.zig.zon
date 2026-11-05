@@ -1,7 +1,7 @@
 .{
     .name = .mecha,
     .version = "0.12.0",
-    .minimum_zig_version = "0.15.1",
+    .minimum_zig_version = "0.17.0",
     .fingerprint = 0x767886c8489a5175,
     .paths = .{"."},
 }

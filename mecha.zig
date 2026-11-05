@@ -381,7 +381,7 @@ fn Combine(comptime parsers: anytype) type {
 /// HACK: Zig cannot cache functions that takes pointers (slices)
 ///       so we have to pass the types as an array, by value.
 fn Tuple(comptime n: usize, comptime types: [n]type) type {
-    return meta.Tuple(&types);
+    return @Tuple(&types);
 }
 
 /// Takes a tuple of `Parser(any)` and constructs a parser that only succeeds if all parsers
@@ -854,21 +854,21 @@ fn ToStructResult(comptime T: type) type {
 pub fn toStruct(comptime T: type) ToStructResult(T) {
     return struct {
         fn func(value: anytype) T {
-            const struct_fields = @typeInfo(T).@"struct".fields;
+            const struct_field_names = @typeInfo(T).@"struct".field_names;
             const copy_many = switch (@typeInfo(@TypeOf(value))) {
-                .@"struct" => |info| info.is_tuple and info.fields.len == struct_fields.len,
-                .array => |info| info.len == struct_fields.len,
+                .@"struct" => |info| info.is_tuple and info.field_names.len == struct_field_names.len,
+                .array => |info| info.len == struct_field_names.len,
                 else => false,
             };
             var res: T = undefined;
             if (copy_many) {
-                inline for (struct_fields, 0..) |field, i|
-                    @field(res, field.name) = value[i];
+                inline for (struct_field_names, 0..) |field_name, i|
+                    @field(res, field_name) = value[i];
                 return res;
             } else {
-                if (struct_fields.len == 0)
+                if (struct_field_names.len == 0)
                     @compileError("Cannot map " ++ @typeName(@TypeOf(value)) ++ " to " ++ @typeName(T));
-                @field(res, struct_fields[0].name) = value;
+                @field(res, struct_field_names[0]) = value;
                 return res;
             }
         }
@@ -1136,12 +1136,12 @@ pub fn enumeration(comptime Enum: type) Parser(Enum) {
     return .{ .parse = struct {
         fn parse(_: mem.Allocator, str: []const u8) Error!Res {
             var res: Res = Res.err(0);
-            inline for (@typeInfo(Enum).@"enum".fields) |field| next: {
-                if (!std.mem.startsWith(u8, str, field.name))
+            inline for (@typeInfo(Enum).@"enum".field_names) |field_name| next: {
+                if (!std.mem.startsWith(u8, str, field_name))
                     break :next;
 
-                if (res.index < field.name.len)
-                    res = Res.ok(field.name.len, @field(Enum, field.name));
+                if (res.index < field_name.len)
+                    res = Res.ok(field_name.len, @field(Enum, field_name));
             }
 
             return res;

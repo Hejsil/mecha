@@ -2020,7 +2020,9 @@ test "i_string_UTF8_surrogate_U+D800" {
 }
 
 test "i_structure_500_nested_arrays" {
-    any(("[" ** 500) ++ ("]" ** 500));
+    const opening_brackets: [500]u8 = @splat('[');
+    const closing_brackets: [500]u8 = @splat(']');
+    any(&opening_brackets ++ &closing_brackets);
 }
 
 test "i_structure_UTF-8_BOM_empty_object" {
